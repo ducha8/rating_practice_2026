@@ -103,18 +103,43 @@ function addMessage(text, role) {
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
 }
 
-// ── Send message ─────────────────────────────────────
-function sendMessage() {
+// ── Send message → GPT-4o ────────────────────────────
+async function sendMessage() {
   const text = messageInputEl.value.trim();
   if (!text) return;
+
   addMessage(text, 'user');
   messageInputEl.value = '';
+
   typingEl.classList.add('visible');
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
-  setTimeout(() => {
+
+  // Собираем историю текущего чата для контекста
+  const chat = getChat(activeChatId);
+  const history = (chat?.messages || []).map(m => ({
+    role: m.role === 'user' ? 'user' : 'assistant',
+    content: m.text
+  }));
+
+  try {
+    const response = await fetch('http://localhost:5000/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: history })
+    });
+
+    const data = await response.json();
     typingEl.classList.remove('visible');
-    addMessage('Привет! Как я могу помочь тебе сегодня?', 'bot');
-  }, 1200);
+
+    if (data.text) {
+      addMessage(data.text, 'bot');
+    } else {
+      addMessage('Ошибка: ' + (data.error || 'нет ответа'), 'bot');
+    }
+  } catch (err) {
+    typingEl.classList.remove('visible');
+    addMessage('Ошибка: сервер не запущен. Запусти: python server.py', 'bot');
+  }
 }
 
 // ── New chat ─────────────────────────────────────────
