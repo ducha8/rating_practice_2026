@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход — Chat App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Unbounded:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0f13; --surface: #13161d; --surface2: #1a1e28; --surface3: #222737;
+      --border: rgba(255,255,255,0.07); --accent: #3b82f6; --accent2: #6366f1;
+      --text: #e2e8f0; --muted: #64748b; --danger: #ef4444; --success: #22c55e;
+    }
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 0;
+    }
+
+    /* Animated gradient background */
+    body::after {
+      content: ''; position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 20% 30%, rgba(59,130,246,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 60% at 80% 70%, rgba(99,102,241,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .card {
+      position: relative; z-index: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(59,130,246,0.05);
+      animation: cardIn 0.4s ease;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-header { display: flex; flex-direction: column; gap: 6px; }
+    .logo {
+      font-family: 'Unbounded', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      background: linear-gradient(135deg, #e2e8f0 30%, var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .subtitle { font-size: 11px; color: var(--muted); }
+
+    /* Tab switcher */
+    .tabs {
+      display: flex;
+      background: var(--surface2);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .tab-btn {
+      flex: 1; padding: 8px; border: none; border-radius: 8px;
+      background: none; color: var(--muted);
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      font-weight: 600; cursor: pointer; transition: all 0.2s;
+      letter-spacing: 0.04em;
+    }
+    .tab-btn.active {
+      background: var(--surface3);
+      color: var(--text);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+
+    /* Forms */
+    .form { display: flex; flex-direction: column; gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-label { font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    .form-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 14px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      width: 100%;
+    }
+    .form-input::placeholder { color: var(--muted); }
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+    .form-input.error { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+
+    .submit-btn {
+      width: 100%; padding: 12px;
+      border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.04em;
+      transition: opacity 0.15s, transform 0.1s;
+      margin-top: 4px;
+    }
+    .submit-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .submit-btn:active { transform: translateY(0); }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Messages */
+    .msg {
+      font-size: 11px; padding: 10px 12px; border-radius: 8px;
+      display: none; animation: msgIn 0.2s ease;
+    }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    .msg.error   { display: block; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; }
+    .msg.success { display: block; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: #86efac; }
+
+    /* Change password section (shown after login) */
+    .change-pw-link {
+      text-align: center; font-size: 10px; color: var(--muted);
+      cursor: pointer; text-decoration: underline;
+      text-underline-offset: 3px; transition: color 0.15s;
+      display: none;
+    }
+    .change-pw-link:hover { color: var(--accent); }
+
+    .divider-text {
+      text-align: center; font-size: 10px; color: var(--muted);
+      position: relative;
+    }
+    .divider-text::before, .divider-text::after {
+      content: ''; position: absolute; top: 50%;
+      width: 40%; height: 1px; background: var(--border);
+    }
+    .divider-text::before { left: 0; }
+    .divider-text::after { right: 0; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <div class="logo">Chat App</div>
+    <div class="subtitle" id="cardSubtitle">Войдите, чтобы продолжить</div>
+  </div>
+
+  <div class="tabs" id="mainTabs">
+    <button class="tab-btn active" data-tab="login">Вход</button>
+    <button class="tab-btn" data-tab="register">Регистрация</button>
+    <button class="tab-btn" data-tab="change-pw" id="changePwTab" style="display:none;">Смена пароля</button>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="tab-login" class="form">
+    <div id="loginMsg" class="msg"></div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="loginEmail" type="email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Пароль</label>
+      <input class="form-input" id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="submit-btn" id="loginBtn">Войти</button>
+    <div class="change-pw-link" id="changePwLink">Сменить пароль</div>
+  </div>
+
+  <!-- REGISTER -->
+  <div id="tab-register" class="form" style="display:none;">
+    <div id="registerMsg" class="msg"></div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="regEmail" type="email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Пароль</label>
+      <input class="form-input" id="regPassword" type="password" placeholder="Минимум 6 символов" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Повторите пароль</label>
+      <input class="form-input" id="regPassword2" type="password" placeholder="Ещё раз" autocomplete="new-password">
+    </div>
+    <button class="submit-btn" id="registerBtn">Создать аккаунт</button>
+  </div>
+
+  <!-- CHANGE PASSWORD -->
+  <div id="tab-change-pw" class="form" style="display:none;">
+    <div id="changePwMsg" class="msg"></div>
+    <div class="form-group">
+      <label class="form-label">Текущий пароль</label>
+      <input class="form-input" id="oldPassword" type="password" placeholder="••••••••">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Новый пароль</label>
+      <input class="form-input" id="newPassword" type="password" placeholder="Минимум 6 символов">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Повторите новый пароль</label>
+      <input class="form-input" id="newPassword2" type="password" placeholder="Ещё раз">
+    </div>
+    <button class="submit-btn" id="changePwBtn">Сменить пароль</button>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:5000';
+
+// ── Tab switching ─────────────────────────────────────
+const tabs = document.querySelectorAll('.tab-btn');
+const subtitles = {
+  'login': 'Войдите, чтобы продолжить',
+  'register': 'Создайте новый аккаунт',
+  'change-pw': 'Изменение пароля'
+};
+
+tabs.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    tabs.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.form').forEach(f => f.style.display = 'none');
+    document.getElementById(`tab-${tab}`).style.display = 'flex';
+    document.getElementById('cardSubtitle').textContent = subtitles[tab] || '';
+    clearMessages();
+  });
+});
+
+function clearMessages() {
+  document.querySelectorAll('.msg').forEach(m => { m.className = 'msg'; m.textContent = ''; });
+}
+
+function showMsg(id, text, type = 'error') {
+  const el = document.getElementById(id);
+  el.className = `msg ${type}`;
+  el.textContent = text;
+}
+
+function setLoading(btn, loading) {
+  if (loading) {
+    btn.disabled = true;
+    btn.dataset.orig = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span>Подождите...';
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.orig;
+  }
+}
+
+// ── Check existing token ──────────────────────────────
+(function checkAuth() {
+  const token = localStorage.getItem('access_token');
+  const email = localStorage.getItem('user_email');
+  if (token && email) {
+    // Показываем кнопку смены пароля
+    document.getElementById('changePwTab').style.display = '';
+    document.getElementById('changePwLink').style.display = 'block';
+    document.getElementById('cardSubtitle').textContent = `Вы вошли как ${email}`;
+  }
+})();
+
+// ── Login ─────────────────────────────────────────────
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('loginBtn');
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+
+  if (!email || !password) { showMsg('loginMsg', 'Заполните все поля'); return; }
+  setLoading(btn, true);
+  clearMessages();
+
+  try {
+    const res = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { showMsg('loginMsg', data.error || 'Ошибка входа'); return; }
+
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    localStorage.setItem('user_email', data.email);
+    window.location.href = 'index.html';
+  } catch {
+    showMsg('loginMsg', 'Сервер недоступен');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
+// ── Register ──────────────────────────────────────────
+document.getElementById('registerBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('registerBtn');
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const password2 = document.getElementById('regPassword2').value;
+
+  if (!email || !password || !password2) { showMsg('registerMsg', 'Заполните все поля'); return; }
+  if (password !== password2) { showMsg('registerMsg', 'Пароли не совпадают'); return; }
+  if (password.length < 6) { showMsg('registerMsg', 'Пароль минимум 6 символов'); return; }
+
+  setLoading(btn, true);
+  clearMessages();
+
+  try {
+    const res = await fetch(`${API}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { showMsg('registerMsg', data.error || 'Ошибка регистрации'); return; }
+
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    localStorage.setItem('user_email', data.email);
+    showMsg('registerMsg', 'Аккаунт создан! Перенаправление...', 'success');
+    setTimeout(() => { window.location.href = 'index.html'; }, 800);
+  } catch {
+    showMsg('registerMsg', 'Сервер недоступен');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
+// ── Change password link ──────────────────────────────
+document.getElementById('changePwLink').addEventListener('click', () => {
+  document.querySelector('[data-tab="change-pw"]').click();
+});
+
+// ── Change password ───────────────────────────────────
+document.getElementById('changePwBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('changePwBtn');
+  const oldPw = document.getElementById('oldPassword').value;
+  const newPw = document.getElementById('newPassword').value;
+  const newPw2 = document.getElementById('newPassword2').value;
+
+  if (!oldPw || !newPw || !newPw2) { showMsg('changePwMsg', 'Заполните все поля'); return; }
+  if (newPw !== newPw2) { showMsg('changePwMsg', 'Новые пароли не совпадают'); return; }
+  if (newPw.length < 6) { showMsg('changePwMsg', 'Пароль минимум 6 символов'); return; }
+
+  setLoading(btn, true);
+  clearMessages();
+
+  const token = localStorage.getItem('access_token');
+  if (!token) { showMsg('changePwMsg', 'Сначала войдите в аккаунт'); setLoading(btn, false); return; }
+
+  try {
+    const res = await fetch(`${API}/api/auth/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+    });
+    const data = await res.json();
+    if (!res.ok) { showMsg('changePwMsg', data.error || 'Ошибка'); return; }
+
+    // Выходим — все refresh токены отозваны
+    localStorage.clear();
+    showMsg('changePwMsg', 'Пароль изменён! Войдите заново.', 'success');
+    setTimeout(() => {
+      document.querySelector('[data-tab="login"]').click();
+      document.getElementById('changePwTab').style.display = 'none';
+    }, 1500);
+  } catch {
+    showMsg('changePwMsg', 'Сервер недоступен');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
+// ── Enter key support ─────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+  if (activeTab === 'login') document.getElementById('loginBtn').click();
+  if (activeTab === 'register') document.getElementById('registerBtn').click();
+  if (activeTab === 'change-pw') document.getElementById('changePwBtn').click();
+});
+</script>
+</body>
+</html>

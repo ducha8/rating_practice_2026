@@ -409,3 +409,26 @@ animation: pulse 2s infinite;
 0%,100% { opacity: 1; }
 50% { opacity: 0.4; }
 }
+/* Context menu */
+#ctxMenu {
+  position: fixed; z-index: 200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  min-width: 160px;
+}
+#ctxMenu button {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: none; border-radius: 7px;
+  background: none; color: var(--text);
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  cursor: pointer; text-align: left; width: 100%;
+  transition: background 0.15s;
+}
+#ctxMenu button:hover { background: var(--surface3); }
+#ctxMenu button:last-child:hover { background: rgba(239,68,68,0.12); color: var(--danger); }
