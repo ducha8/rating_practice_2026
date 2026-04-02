@@ -1,157 +1,356 @@
-let chats = [
-  { id: 'chat_1', name: '20250516_083700', messages: [] },
-  {
-    id: 'chat_2',
-    name: 'Новый чат: 2025.05.22',
-    messages: [
-      { role: 'user', text: 'Привет', time: '10:41' },
-      { role: 'bot',  text: 'Привет! Как я могу помочь тебе сегодня?', time: '10:41' },
-      { role: 'user', text: 'Как дела?', time: '10:42' },
-      { role: 'bot',  text: 'Всё отлично, готов помогать! Что нужно сделать?', time: '10:42' },
-    ]
-  },
-  ...Array.from({ length: 10 }, (_, i) => ({
-    id: `chat_${i + 3}`,
-    name: `Новый чат: 2025.05.${i < 7 ? '22' : '23'}`,
-    messages: []
-  }))
-];
+const API = 'http://localhost:5000';
 
-let activeChatId = 'chat_2';
-let pendingDeleteId = null;
-
-// ── DOM refs ─────────────────────────────────────────
-const chatListEl     = document.getElementById('chatList');
-const chatWindowEl   = document.getElementById('chatWindow');
-const typingEl       = document.getElementById('typingIndicator');
-const currentLabelEl = document.getElementById('currentChatLabel');
-const messageInputEl = document.getElementById('messageInput');
-const confirmOverlay = document.getElementById('confirmOverlay');
-const confirmNameEl  = document.getElementById('confirmChatName');
-
-// ── Helpers ──────────────────────────────────────────
-function now() {
-  return new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+// ── Auth helpers ───────────────────────────────────────
+function getToken() {
+  return localStorage.getItem('access_token');
 }
-function getChat(id) { return chats.find(c => c.id === id); }
 
-// ── Render chat list ─────────────────────────────────
-function renderChatList() {
-  chatListEl.innerHTML = '';
-  chats.forEach(chat => {
-    const item = document.createElement('div');
-    item.className = 'chat-item' + (chat.id === activeChatId ? ' active' : '');
+async function apiFetch(url, options) {
+  options = options || {};
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+  const token = getToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
 
-    const name = document.createElement('span');
-    name.className = 'chat-item-name';
-    name.textContent = chat.name;
+  let res;
+  try {
+    res = await fetch(API + url, Object.assign({}, options, { headers: headers }));
+  } catch (e) {
+    throw new Error('Сервер недоступен: ' + e.message);
+  }
 
-    const delBtn = document.createElement('button');
-    delBtn.className = 'chat-delete-btn';
-    delBtn.title = 'Удалить чат';
-    delBtn.textContent = '✕';
-    delBtn.addEventListener('click', e => { e.stopPropagation(); openConfirm(chat.id, chat.name); });
+  // Токен истёк — пробуем refresh
+  if (res.status === 401) {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      try {
+        const r = await fetch(API + '/api/auth/refresh', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ refresh_token: refreshToken })
+        });
+        if (r.ok) {
+          const d = await r.json();
+          localStorage.setItem('access_token',  d.access_token);
+          localStorage.setItem('refresh_token', d.refresh_token);
+          headers['Authorization'] = 'Bearer ' + d.access_token;
+          return fetch(API + url, Object.assign({}, options, { headers: headers }));
+        }
+      } catch (e) { /* не удалось обновить */ }
+    }
+    localStorage.clear();
+    window.location.replace('login.html');
+    return res;
+  }
+  return res;
+}
 
-    item.appendChild(name);
-    item.appendChild(delBtn);
-    item.addEventListener('click', () => switchChat(chat.id));
-    chatListEl.appendChild(item);
+// ── Проверка авторизации ───────────────────────────────
+if (!getToken()) {
+  window.location.replace('login.html');
+}
+
+// ── State ──────────────────────────────────────────────
+var chats        = [];
+var activeChatId = null;
+
+// ── DOM refs ───────────────────────────────────────────
+var chatListEl     = document.getElementById('chatList');
+var chatWindowEl   = document.getElementById('chatWindow');
+var typingEl       = document.getElementById('typingIndicator');
+var currentLabelEl = document.getElementById('currentChatLabel');
+var messageInputEl = document.getElementById('messageInput');
+var confirmOverlay = document.getElementById('confirmOverlay');
+var confirmNameEl  = document.getElementById('confirmChatName');
+var greetingEl     = document.getElementById('greetingEl');
+
+// ── Greeting ───────────────────────────────────────────
+var userEmail = localStorage.getItem('user_email') || '';
+if (greetingEl && userEmail) greetingEl.textContent = '👋 ' + userEmail;
+
+// ══════════════════════════════════════════════════════
+//  CHANGE PASSWORD MODAL
+// ══════════════════════════════════════════════════════
+var changePwOverlay   = document.getElementById('changePwOverlay');
+var changePwUserLabel = document.getElementById('changePwUserLabel');
+var changePwMsg       = document.getElementById('changePwMsg');
+var changePwSubmitBtn = document.getElementById('changePwSubmitBtn');
+
+function openChangePw() {
+  changePwUserLabel.textContent = 'Аккаунт: ' + userEmail;
+  changePwMsg.className = 'inline-msg';
+  changePwMsg.textContent = '';
+  document.getElementById('oldPassword').value  = '';
+  document.getElementById('newPassword').value  = '';
+  document.getElementById('newPassword2').value = '';
+  changePwOverlay.classList.add('visible');
+  setTimeout(function() { document.getElementById('oldPassword').focus(); }, 200);
+}
+
+function closeChangePw() {
+  changePwOverlay.classList.remove('visible');
+}
+
+function showChangePwMsg(text, type) {
+  changePwMsg.className = 'inline-msg ' + (type || 'error');
+  changePwMsg.textContent = text;
+}
+
+function setChangePwLoading(loading) {
+  if (loading) {
+    changePwSubmitBtn.disabled = true;
+    changePwSubmitBtn.innerHTML = '<span class="spinner"></span>Подождите...';
+  } else {
+    changePwSubmitBtn.disabled = false;
+    changePwSubmitBtn.textContent = 'Сменить пароль';
+  }
+}
+
+document.getElementById('changePwBtn').addEventListener('click', openChangePw);
+document.getElementById('changePwCancelBtn').addEventListener('click', closeChangePw);
+changePwOverlay.addEventListener('click', function(e) {
+  if (e.target === changePwOverlay) closeChangePw();
+});
+
+changePwSubmitBtn.addEventListener('click', async function() {
+  var oldPw  = document.getElementById('oldPassword').value;
+  var newPw  = document.getElementById('newPassword').value;
+  var newPw2 = document.getElementById('newPassword2').value;
+
+  if (!oldPw || !newPw || !newPw2) { showChangePwMsg('Заполните все поля'); return; }
+  if (newPw !== newPw2)            { showChangePwMsg('Новые пароли не совпадают'); return; }
+  if (newPw.length < 6)           { showChangePwMsg('Пароль минимум 6 символов'); return; }
+
+  setChangePwLoading(true);
+  try {
+    var res  = await apiFetch('/api/auth/change-password', {
+      method: 'POST',
+      body:   JSON.stringify({ old_password: oldPw, new_password: newPw })
+    });
+    var data = await res.json();
+    if (!res.ok) { showChangePwMsg(data.error || 'Ошибка'); return; }
+    showChangePwMsg('Пароль изменён! Войдите заново.', 'success');
+    setTimeout(function() {
+      localStorage.clear();
+      window.location.replace('login.html');
+    }, 1500);
+  } catch (e) {
+    showChangePwMsg('Ошибка: ' + e.message);
+  } finally {
+    setChangePwLoading(false);
+  }
+});
+
+['oldPassword', 'newPassword', 'newPassword2'].forEach(function(id) {
+  document.getElementById(id).addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') changePwSubmitBtn.click();
+  });
+});
+
+// ══════════════════════════════════════════════════════
+//  CONTEXT MENU
+// ══════════════════════════════════════════════════════
+var ctxMenu         = null;
+var pendingDeleteId = null;
+var renamingId      = null;
+
+function removeCtxMenu() {
+  if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; }
+}
+
+function showContextMenu(x, y, chatId, chatName) {
+  removeCtxMenu();
+  ctxMenu = document.createElement('div');
+  ctxMenu.className = 'ctx-menu';
+  ctxMenu.innerHTML =
+    '<button class="ctx-item" data-action="rename">✏️ Переименовать</button>' +
+    '<button class="ctx-item danger" data-action="delete">🗑 Удалить</button>';
+  ctxMenu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;z-index:200;';
+  document.body.appendChild(ctxMenu);
+
+  var rect = ctxMenu.getBoundingClientRect();
+  if (rect.right  > window.innerWidth)  ctxMenu.style.left = (x - rect.width)  + 'px';
+  if (rect.bottom > window.innerHeight) ctxMenu.style.top  = (y - rect.height) + 'px';
+
+  ctxMenu.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    if (btn.dataset.action === 'rename') startRename(chatId);
+    if (btn.dataset.action === 'delete') openConfirm(chatId, chatName);
+    removeCtxMenu();
   });
 }
 
-// ── Render messages ──────────────────────────────────
-function renderMessages() {
-  [...chatWindowEl.children].forEach(ch => { if (ch.id !== 'typingIndicator') ch.remove(); });
-  const chat = getChat(activeChatId);
-  if (!chat) return;
-  chat.messages.forEach(msg => {
-    chatWindowEl.insertBefore(buildMessageEl(msg.text, msg.role, msg.time), typingEl);
+document.addEventListener('click', removeCtxMenu);
+document.addEventListener('contextmenu', function(e) {
+  if (!e.target.closest('.chat-item')) removeCtxMenu();
+});
+
+// ══════════════════════════════════════════════════════
+//  RENAME
+// ══════════════════════════════════════════════════════
+function startRename(chatId) {
+  renamingId = chatId;
+  renderChatList();
+}
+
+async function commitRename(chatId, newName) {
+  newName = (newName || '').trim();
+  renamingId = null;
+  if (!newName) { renderChatList(); return; }
+  try {
+    var res = await apiFetch('/api/chats/' + chatId, {
+      method: 'PATCH',
+      body:   JSON.stringify({ name: newName })
+    });
+    if (res.ok) {
+      var chat = chats.find(function(c) { return c.id === chatId; });
+      if (chat) chat.name = newName;
+      if (activeChatId === chatId)
+        currentLabelEl.innerHTML = 'Текущий чат:<br><span>' + newName + '</span>';
+    }
+  } catch (e) { /* silent */ }
+  renderChatList();
+}
+
+// ══════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════
+function renderChatList() {
+  chatListEl.innerHTML = '';
+  chats.forEach(function(chat) {
+    var item = document.createElement('div');
+    item.className = 'chat-item' + (chat.id === activeChatId ? ' active' : '');
+    item.dataset.chatId = chat.id;
+
+    if (renamingId === chat.id) {
+      var inp = document.createElement('input');
+      inp.type      = 'text';
+      inp.className = 'rename-input';
+      inp.value     = chat.name;
+      inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter')  commitRename(chat.id, inp.value);
+        if (e.key === 'Escape') { renamingId = null; renderChatList(); }
+        e.stopPropagation();
+      });
+      inp.addEventListener('blur', function() { commitRename(chat.id, inp.value); });
+      item.appendChild(inp);
+      chatListEl.appendChild(item);
+      setTimeout(function() { inp.focus(); inp.select(); }, 0);
+    } else {
+      var nameEl = document.createElement('span');
+      nameEl.className   = 'chat-item-name';
+      nameEl.textContent = chat.name;
+      item.appendChild(nameEl);
+      item.addEventListener('click', function() { switchChat(chat.id); });
+      item.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showContextMenu(e.clientX, e.clientY, chat.id, chat.name);
+      });
+      chatListEl.appendChild(item);
+    }
+  });
+}
+
+function renderMessages(messages) {
+  messages = messages || [];
+  Array.from(chatWindowEl.children).forEach(function(ch) {
+    if (ch.id !== 'typingIndicator') ch.remove();
+  });
+  messages.forEach(function(msg) {
+    var role = msg.role === 'assistant' ? 'bot' : 'user';
+    var time = msg.created_at ? msg.created_at.substring(11, 16) : nowTime();
+    chatWindowEl.insertBefore(buildMessageEl(msg.content || msg.text || '', role, time), typingEl);
   });
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
 }
 
 function buildMessageEl(text, role, time) {
-  const wrap = document.createElement('div');
-  wrap.className = `message ${role}`;
-  const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
+  var wrap   = document.createElement('div');
+  wrap.className = 'message ' + role;
+  var bubble = document.createElement('div');
+  bubble.className   = 'msg-bubble';
   bubble.textContent = text;
-  const t = document.createElement('div');
-  t.className = 'msg-time';
-  t.textContent = time || now();
+  var t = document.createElement('div');
+  t.className   = 'msg-time';
+  t.textContent = time || nowTime();
   wrap.appendChild(bubble);
   wrap.appendChild(t);
   return wrap;
 }
 
-// ── Switch chat ──────────────────────────────────────
-function switchChat(id) {
+function addMessageEl(text, role) {
+  chatWindowEl.insertBefore(buildMessageEl(text, role, nowTime()), typingEl);
+  chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
+}
+
+// ══════════════════════════════════════════════════════
+//  CHAT OPERATIONS
+// ══════════════════════════════════════════════════════
+async function switchChat(id) {
   activeChatId = id;
-  const chat = getChat(id);
-  currentLabelEl.textContent = chat ? chat.name : '—';
+  var chat = chats.find(function(c) { return c.id === id; });
+  currentLabelEl.innerHTML = 'Текущий чат:<br><span>' + (chat ? chat.name : '—') + '</span>';
   renderChatList();
-  renderMessages();
-}
 
-// ── Add message ──────────────────────────────────────
-function addMessage(text, role) {
-  const chat = getChat(activeChatId);
-  if (!chat) return;
-  const msg = { role, text, time: now() };
-  chat.messages.push(msg);
-  chatWindowEl.insertBefore(buildMessageEl(msg.text, msg.role, msg.time), typingEl);
-  chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
-}
-
-// ── Send message → GPT-4o ────────────────────────────
-async function sendMessage() {
-  const text = messageInputEl.value.trim();
-  if (!text) return;
-
-  addMessage(text, 'user');
-  messageInputEl.value = '';
-
+  Array.from(chatWindowEl.children).forEach(function(ch) {
+    if (ch.id !== 'typingIndicator') ch.remove();
+  });
   typingEl.classList.add('visible');
-  chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
-
-  // Собираем историю текущего чата для контекста
-  const chat = getChat(activeChatId);
-  const history = (chat?.messages || []).map(m => ({
-    role: m.role === 'user' ? 'user' : 'assistant',
-    content: m.text
-  }));
 
   try {
-    const response = await fetch('http://localhost:5000/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history })
-    });
-
-    const data = await response.json();
+    var res  = await apiFetch('/api/chats/' + id + '/messages');
+    var msgs = await res.json();
     typingEl.classList.remove('visible');
-
-    if (data.text) {
-      addMessage(data.text, 'bot');
-    } else {
-      addMessage('Ошибка: ' + (data.error || 'нет ответа'), 'bot');
-    }
-  } catch (err) {
+    renderMessages(Array.isArray(msgs) ? msgs : []);
+  } catch (e) {
     typingEl.classList.remove('visible');
-    addMessage('Ошибка: сервер не запущен. Запусти: python server.py', 'bot');
+    addMessageEl('Не удалось загрузить историю: ' + e.message, 'bot');
   }
 }
 
-// ── New chat ─────────────────────────────────────────
-function createNewChat() {
-  const d = new Date();
-  const date = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
-  const id = `chat_${Date.now()}`;
-  chats.unshift({ id, name: `Новый чат: ${date}`, messages: [] });
-  switchChat(id);
+async function loadChats() {
+  try {
+    var res = await apiFetch('/api/chats');
+    if (!res.ok) {
+      var err = await res.json().catch(function() { return {}; });
+      currentLabelEl.innerHTML = 'Ошибка загрузки: ' + (err.error || res.status);
+      return;
+    }
+    chats = await res.json();
+    renderChatList();
+    if (chats.length) {
+      switchChat(chats[0].id);
+    } else {
+      currentLabelEl.innerHTML = 'Текущий чат:<br><span>—</span>';
+    }
+  } catch (e) {
+    currentLabelEl.innerHTML = 'Ошибка: ' + e.message;
+  }
 }
 
-// ── Delete chat ──────────────────────────────────────
+async function createNewChat() {
+  try {
+    // Всегда передаём JSON body чтобы Content-Type был правильным
+    var res  = await apiFetch('/api/chats', {
+      method: 'POST',
+      body:   JSON.stringify({})
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function() { return {}; });
+      console.error('Ошибка создания чата:', err.error || res.status);
+      return null;
+    }
+    var chat = await res.json();
+    chats.unshift(chat);
+    await switchChat(chat.id);
+    return chat.id;
+  } catch (e) {
+    console.error('createNewChat error:', e.message);
+    return null;
+  }
+}
+
 function openConfirm(id, name) {
   pendingDeleteId = id;
   confirmNameEl.textContent = name;
@@ -161,78 +360,160 @@ function closeConfirm() {
   confirmOverlay.classList.remove('visible');
   pendingDeleteId = null;
 }
-function confirmDelete() {
+async function confirmDelete() {
   if (!pendingDeleteId) return;
-  chats = chats.filter(c => c.id !== pendingDeleteId);
-  if (activeChatId === pendingDeleteId) activeChatId = chats.length ? chats[0].id : null;
+  var id = pendingDeleteId;
   closeConfirm();
-  if (activeChatId) { switchChat(activeChatId); }
-  else { currentLabelEl.textContent = '—'; renderChatList(); renderMessages(); }
+  try { await apiFetch('/api/chats/' + id, { method: 'DELETE' }); } catch (e) { /* silent */ }
+  chats = chats.filter(function(c) { return c.id !== id; });
+  if (activeChatId === id) activeChatId = chats.length ? chats[0].id : null;
+  renderChatList();
+  if (activeChatId) {
+    switchChat(activeChatId);
+  } else {
+    currentLabelEl.innerHTML = 'Текущий чат:<br><span>—</span>';
+    Array.from(chatWindowEl.children).forEach(function(ch) {
+      if (ch.id !== 'typingIndicator') ch.remove();
+    });
+  }
 }
 
-// ── Download history ─────────────────────────────────
-function downloadHistory() {
-  const chat = getChat(activeChatId);
-  if (!chat || !chat.messages.length) return;
-  const text = chat.messages
-    .map(m => `[${m.time}] ${m.role === 'user' ? 'Пользователь' : 'Бот'}: ${m.text}`)
-    .join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
-  a.download = `${chat.name}.txt`;
-  a.click();
+// ══════════════════════════════════════════════════════
+//  SEND MESSAGE → GPT-4o
+// ══════════════════════════════════════════════════════
+async function sendMessage() {
+  var text = messageInputEl.value.trim();
+  if (!text) return;
+
+  // Создаём чат если нет активного
+  if (!activeChatId) {
+    var newId = await createNewChat();
+    if (!newId) {
+      addMessageEl('Ошибка: не удалось создать чат', 'bot');
+      return;
+    }
+  }
+
+  addMessageEl(text, 'user');
+  messageInputEl.value = '';
+  typingEl.classList.add('visible');
+  chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
+
+  // Собираем историю из DOM
+  var history = [];
+  Array.from(chatWindowEl.children).forEach(function(ch) {
+    if (ch.id === 'typingIndicator') return;
+    var role    = ch.classList.contains('user') ? 'user' : 'assistant';
+    var bubble  = ch.querySelector('.msg-bubble');
+    var content = bubble ? bubble.textContent : '';
+    if (content) history.push({ role: role, content: content });
+  });
+
+  try {
+    var res  = await apiFetch('/api/chat', {
+      method: 'POST',
+      body:   JSON.stringify({ messages: history, chat_id: activeChatId })
+    });
+    var data = await res.json();
+    typingEl.classList.remove('visible');
+    if (res.ok) {
+      addMessageEl(data.text || 'Пустой ответ', 'bot');
+    } else {
+      addMessageEl('Ошибка GPT: ' + (data.error || res.status), 'bot');
+    }
+    var chat = chats.find(function(c) { return c.id === activeChatId; });
+    if (chat) chat.updated_at = new Date().toISOString();
+  } catch (e) {
+    typingEl.classList.remove('visible');
+    addMessageEl('Ошибка соединения: ' + e.message, 'bot');
+  }
 }
 
-// ── Upload audio → Whisper → чат ─────────────────────
+// ══════════════════════════════════════════════════════
+//  UPLOAD AUDIO → WHISPER
+// ══════════════════════════════════════════════════════
 function uploadFile() {
-  const fi = document.createElement('input');
-  fi.type = 'file';
+  var fi = document.createElement('input');
+  fi.type   = 'file';
   fi.accept = 'audio/*';
   fi.click();
-
-  fi.onchange = async () => {
-    const file = fi.files[0];
+  fi.onchange = async function() {
+    var file = fi.files[0];
     if (!file) return;
-
-    addMessage(`🎵 Аудио: ${file.name}`, 'user');
+    if (!activeChatId) {
+      var newId = await createNewChat();
+      if (!newId) return;
+    }
+    addMessageEl('🎵 Аудио: ' + file.name, 'user');
     typingEl.classList.add('visible');
     chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
-
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('http://localhost:5000/api/transcribe', {
-        method: 'POST',
-        body: formData
+      var token = getToken();
+      var fd = new FormData();
+      fd.append('file', file);
+      var res  = await fetch(API + '/api/transcribe', {
+        method:  'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body:    fd
       });
-
-      const data = await response.json();
+      var data = await res.json();
       typingEl.classList.remove('visible');
-
-      if (data.text) {
-        addMessage(data.text, 'bot');
-      } else {
-        addMessage('Ошибка: ' + (data.error || 'не удалось распознать аудио'), 'bot');
-      }
-    } catch (err) {
+      addMessageEl(data.text || ('Ошибка: ' + (data.error || 'не удалось распознать')), 'bot');
+    } catch (e) {
       typingEl.classList.remove('visible');
-      addMessage('Ошибка: сервер не запущен. Запусти: python server.py', 'bot');
+      addMessageEl('Ошибка: ' + e.message, 'bot');
     }
   };
 }
 
-// ── Events ───────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+//  DOWNLOAD HISTORY
+// ══════════════════════════════════════════════════════
+function downloadHistory() {
+  var chat = chats.find(function(c) { return c.id === activeChatId; });
+  if (!chat) return;
+  var lines = [];
+  Array.from(chatWindowEl.children).forEach(function(ch) {
+    if (ch.id === 'typingIndicator') return;
+    var timeEl  = ch.querySelector('.msg-time');
+    var bubbleEl = ch.querySelector('.msg-bubble');
+    var time  = timeEl   ? timeEl.textContent   : '';
+    var text  = bubbleEl ? bubbleEl.textContent : '';
+    var who   = ch.classList.contains('user') ? 'Пользователь' : 'Бот';
+    if (text) lines.push('[' + time + '] ' + who + ': ' + text);
+  });
+  if (!lines.length) return;
+  var a = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+  a.download = chat.name + '.txt';
+  a.click();
+}
+
+function nowTime() {
+  return new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ══════════════════════════════════════════════════════
+//  EVENTS
+// ══════════════════════════════════════════════════════
 document.getElementById('sendBtn').addEventListener('click', sendMessage);
-messageInputEl.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+messageInputEl.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') sendMessage();
+});
 document.getElementById('newChatBtn').addEventListener('click', createNewChat);
 document.getElementById('downloadBtn').addEventListener('click', downloadHistory);
 document.getElementById('uploadBtn').addEventListener('click', uploadFile);
 document.getElementById('confirmCancelBtn').addEventListener('click', closeConfirm);
 document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
-confirmOverlay.addEventListener('click', e => { if (e.target === confirmOverlay) closeConfirm(); });
+confirmOverlay.addEventListener('click', function(e) {
+  if (e.target === confirmOverlay) closeConfirm();
+});
+document.getElementById('logoutBtn').addEventListener('click', function() {
+  localStorage.clear();
+  window.location.replace('login.html');
+});
 
-// ── Init ─────────────────────────────────────────────
-renderChatList();
-renderMessages();
-currentLabelEl.textContent = getChat(activeChatId)?.name || '—';
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+loadChats();
