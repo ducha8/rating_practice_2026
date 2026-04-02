@@ -18,7 +18,6 @@ async function apiFetch(url, options) {
     throw new Error('Сервер недоступен: ' + e.message);
   }
 
-  // Токен истёк — пробуем refresh
   if (res.status === 401) {
     const refreshToken = localStorage.getItem('refresh_token');
     if (refreshToken) {
@@ -44,7 +43,6 @@ async function apiFetch(url, options) {
   return res;
 }
 
-// ── Проверка авторизации ───────────────────────────────
 if (!getToken()) {
   window.location.replace('login.html');
 }
@@ -52,6 +50,10 @@ if (!getToken()) {
 // ── State ──────────────────────────────────────────────
 var chats        = [];
 var activeChatId = null;
+
+// История сообщений активного чата (для передачи в GPT)
+// Формат: [{role: 'user'|'assistant', content: '...'}]
+var activeHistory = [];
 
 // ── DOM refs ───────────────────────────────────────────
 var chatListEl     = document.getElementById('chatList');
@@ -63,7 +65,6 @@ var confirmOverlay = document.getElementById('confirmOverlay');
 var confirmNameEl  = document.getElementById('confirmChatName');
 var greetingEl     = document.getElementById('greetingEl');
 
-// ── Greeting ───────────────────────────────────────────
 var userEmail = localStorage.getItem('user_email') || '';
 if (greetingEl && userEmail) greetingEl.textContent = '👋 ' + userEmail;
 
@@ -85,16 +86,11 @@ function openChangePw() {
   changePwOverlay.classList.add('visible');
   setTimeout(function() { document.getElementById('oldPassword').focus(); }, 200);
 }
-
-function closeChangePw() {
-  changePwOverlay.classList.remove('visible');
-}
-
+function closeChangePw() { changePwOverlay.classList.remove('visible'); }
 function showChangePwMsg(text, type) {
   changePwMsg.className = 'inline-msg ' + (type || 'error');
   changePwMsg.textContent = text;
 }
-
 function setChangePwLoading(loading) {
   if (loading) {
     changePwSubmitBtn.disabled = true;
@@ -110,16 +106,13 @@ document.getElementById('changePwCancelBtn').addEventListener('click', closeChan
 changePwOverlay.addEventListener('click', function(e) {
   if (e.target === changePwOverlay) closeChangePw();
 });
-
 changePwSubmitBtn.addEventListener('click', async function() {
   var oldPw  = document.getElementById('oldPassword').value;
   var newPw  = document.getElementById('newPassword').value;
   var newPw2 = document.getElementById('newPassword2').value;
-
   if (!oldPw || !newPw || !newPw2) { showChangePwMsg('Заполните все поля'); return; }
   if (newPw !== newPw2)            { showChangePwMsg('Новые пароли не совпадают'); return; }
   if (newPw.length < 6)           { showChangePwMsg('Пароль минимум 6 символов'); return; }
-
   setChangePwLoading(true);
   try {
     var res  = await apiFetch('/api/auth/change-password', {
@@ -129,17 +122,13 @@ changePwSubmitBtn.addEventListener('click', async function() {
     var data = await res.json();
     if (!res.ok) { showChangePwMsg(data.error || 'Ошибка'); return; }
     showChangePwMsg('Пароль изменён! Войдите заново.', 'success');
-    setTimeout(function() {
-      localStorage.clear();
-      window.location.replace('login.html');
-    }, 1500);
+    setTimeout(function() { localStorage.clear(); window.location.replace('login.html'); }, 1500);
   } catch (e) {
     showChangePwMsg('Ошибка: ' + e.message);
   } finally {
     setChangePwLoading(false);
   }
 });
-
 ['oldPassword', 'newPassword', 'newPassword2'].forEach(function(id) {
   document.getElementById(id).addEventListener('keydown', function(e) {
     if (e.key === 'Enter') changePwSubmitBtn.click();
@@ -156,7 +145,6 @@ var renamingId      = null;
 function removeCtxMenu() {
   if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; }
 }
-
 function showContextMenu(x, y, chatId, chatName) {
   removeCtxMenu();
   ctxMenu = document.createElement('div');
@@ -166,11 +154,9 @@ function showContextMenu(x, y, chatId, chatName) {
     '<button class="ctx-item danger" data-action="delete">🗑 Удалить</button>';
   ctxMenu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;z-index:200;';
   document.body.appendChild(ctxMenu);
-
   var rect = ctxMenu.getBoundingClientRect();
   if (rect.right  > window.innerWidth)  ctxMenu.style.left = (x - rect.width)  + 'px';
   if (rect.bottom > window.innerHeight) ctxMenu.style.top  = (y - rect.height) + 'px';
-
   ctxMenu.addEventListener('click', function(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
@@ -179,7 +165,6 @@ function showContextMenu(x, y, chatId, chatName) {
     removeCtxMenu();
   });
 }
-
 document.addEventListener('click', removeCtxMenu);
 document.addEventListener('contextmenu', function(e) {
   if (!e.target.closest('.chat-item')) removeCtxMenu();
@@ -188,10 +173,7 @@ document.addEventListener('contextmenu', function(e) {
 // ══════════════════════════════════════════════════════
 //  RENAME
 // ══════════════════════════════════════════════════════
-function startRename(chatId) {
-  renamingId = chatId;
-  renderChatList();
-}
+function startRename(chatId) { renamingId = chatId; renderChatList(); }
 
 async function commitRename(chatId, newName) {
   newName = (newName || '').trim();
@@ -221,12 +203,9 @@ function renderChatList() {
     var item = document.createElement('div');
     item.className = 'chat-item' + (chat.id === activeChatId ? ' active' : '');
     item.dataset.chatId = chat.id;
-
     if (renamingId === chat.id) {
       var inp = document.createElement('input');
-      inp.type      = 'text';
-      inp.className = 'rename-input';
-      inp.value     = chat.name;
+      inp.type = 'text'; inp.className = 'rename-input'; inp.value = chat.name;
       inp.addEventListener('keydown', function(e) {
         if (e.key === 'Enter')  commitRename(chat.id, inp.value);
         if (e.key === 'Escape') { renamingId = null; renderChatList(); }
@@ -238,13 +217,12 @@ function renderChatList() {
       setTimeout(function() { inp.focus(); inp.select(); }, 0);
     } else {
       var nameEl = document.createElement('span');
-      nameEl.className   = 'chat-item-name';
+      nameEl.className = 'chat-item-name';
       nameEl.textContent = chat.name;
       item.appendChild(nameEl);
       item.addEventListener('click', function() { switchChat(chat.id); });
       item.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         showContextMenu(e.clientX, e.clientY, chat.id, chat.name);
       });
       chatListEl.appendChild(item);
@@ -254,20 +232,27 @@ function renderChatList() {
 
 function renderMessages(messages) {
   messages = messages || [];
+  // Очищаем окно и историю
   Array.from(chatWindowEl.children).forEach(function(ch) {
     if (ch.id !== 'typingIndicator') ch.remove();
   });
+  activeHistory = [];
+
   messages.forEach(function(msg) {
-    var role = msg.role === 'assistant' ? 'bot' : 'user';
-    var time = msg.created_at ? msg.created_at.substring(11, 16) : nowTime();
-    chatWindowEl.insertBefore(buildMessageEl(msg.content || msg.text || '', role, time), typingEl);
+    var role    = msg.role === 'assistant' ? 'assistant' : 'user';
+    var content = msg.content || msg.text || '';
+    var time    = msg.created_at ? msg.created_at.substring(11, 16) : nowTime();
+    // Добавляем в историю для GPT
+    activeHistory.push({ role: role, content: content });
+    // Рисуем в UI (bot = класс для стилей)
+    chatWindowEl.insertBefore(buildMessageEl(content, role === 'assistant' ? 'bot' : 'user', time), typingEl);
   });
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
 }
 
-function buildMessageEl(text, role, time) {
+function buildMessageEl(text, roleClass, time) {
   var wrap   = document.createElement('div');
-  wrap.className = 'message ' + role;
+  wrap.className = 'message ' + roleClass;
   var bubble = document.createElement('div');
   bubble.className   = 'msg-bubble';
   bubble.textContent = text;
@@ -279,8 +264,8 @@ function buildMessageEl(text, role, time) {
   return wrap;
 }
 
-function addMessageEl(text, role) {
-  chatWindowEl.insertBefore(buildMessageEl(text, role, nowTime()), typingEl);
+function addMessageEl(text, roleClass) {
+  chatWindowEl.insertBefore(buildMessageEl(text, roleClass, nowTime()), typingEl);
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
 }
 
@@ -288,16 +273,15 @@ function addMessageEl(text, role) {
 //  CHAT OPERATIONS
 // ══════════════════════════════════════════════════════
 async function switchChat(id) {
-  activeChatId = id;
+  activeChatId  = id;
+  activeHistory = [];
   var chat = chats.find(function(c) { return c.id === id; });
   currentLabelEl.innerHTML = 'Текущий чат:<br><span>' + (chat ? chat.name : '—') + '</span>';
   renderChatList();
-
   Array.from(chatWindowEl.children).forEach(function(ch) {
     if (ch.id !== 'typingIndicator') ch.remove();
   });
   typingEl.classList.add('visible');
-
   try {
     var res  = await apiFetch('/api/chats/' + id + '/messages');
     var msgs = await res.json();
@@ -314,16 +298,13 @@ async function loadChats() {
     var res = await apiFetch('/api/chats');
     if (!res.ok) {
       var err = await res.json().catch(function() { return {}; });
-      currentLabelEl.innerHTML = 'Ошибка загрузки: ' + (err.error || res.status);
+      currentLabelEl.innerHTML = 'Ошибка: ' + (err.error || res.status);
       return;
     }
     chats = await res.json();
     renderChatList();
-    if (chats.length) {
-      switchChat(chats[0].id);
-    } else {
-      currentLabelEl.innerHTML = 'Текущий чат:<br><span>—</span>';
-    }
+    if (chats.length) switchChat(chats[0].id);
+    else currentLabelEl.innerHTML = 'Текущий чат:<br><span>—</span>';
   } catch (e) {
     currentLabelEl.innerHTML = 'Ошибка: ' + e.message;
   }
@@ -331,8 +312,7 @@ async function loadChats() {
 
 async function createNewChat() {
   try {
-    // Всегда передаём JSON body чтобы Content-Type был правильным
-    var res  = await apiFetch('/api/chats', {
+    var res = await apiFetch('/api/chats', {
       method: 'POST',
       body:   JSON.stringify({})
     });
@@ -346,7 +326,7 @@ async function createNewChat() {
     await switchChat(chat.id);
     return chat.id;
   } catch (e) {
-    console.error('createNewChat error:', e.message);
+    console.error('createNewChat:', e.message);
     return null;
   }
 }
@@ -366,7 +346,8 @@ async function confirmDelete() {
   closeConfirm();
   try { await apiFetch('/api/chats/' + id, { method: 'DELETE' }); } catch (e) { /* silent */ }
   chats = chats.filter(function(c) { return c.id !== id; });
-  if (activeChatId === id) activeChatId = chats.length ? chats[0].id : null;
+  if (activeChatId === id) { activeChatId = null; activeHistory = []; }
+  if (!activeChatId && chats.length) activeChatId = chats[0].id;
   renderChatList();
   if (activeChatId) {
     switchChat(activeChatId);
@@ -379,52 +360,48 @@ async function confirmDelete() {
 }
 
 // ══════════════════════════════════════════════════════
-//  SEND MESSAGE → GPT-4o
+//  SEND MESSAGE → GPT-4o  (с полной историей)
 // ══════════════════════════════════════════════════════
 async function sendMessage() {
   var text = messageInputEl.value.trim();
   if (!text) return;
 
-  // Создаём чат если нет активного
   if (!activeChatId) {
     var newId = await createNewChat();
-    if (!newId) {
-      addMessageEl('Ошибка: не удалось создать чат', 'bot');
-      return;
-    }
+    if (!newId) { addMessageEl('Ошибка: не удалось создать чат', 'bot'); return; }
   }
 
+  // Добавляем сообщение пользователя в историю и UI
+  activeHistory.push({ role: 'user', content: text });
   addMessageEl(text, 'user');
   messageInputEl.value = '';
   typingEl.classList.add('visible');
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
 
-  // Собираем историю из DOM
-  var history = [];
-  Array.from(chatWindowEl.children).forEach(function(ch) {
-    if (ch.id === 'typingIndicator') return;
-    var role    = ch.classList.contains('user') ? 'user' : 'assistant';
-    var bubble  = ch.querySelector('.msg-bubble');
-    var content = bubble ? bubble.textContent : '';
-    if (content) history.push({ role: role, content: content });
-  });
-
   try {
     var res  = await apiFetch('/api/chat', {
       method: 'POST',
-      body:   JSON.stringify({ messages: history, chat_id: activeChatId })
+      // Передаём полную историю — GPT видит весь контекст разговора
+      body:   JSON.stringify({ messages: activeHistory, chat_id: activeChatId })
     });
     var data = await res.json();
     typingEl.classList.remove('visible');
-    if (res.ok) {
-      addMessageEl(data.text || 'Пустой ответ', 'bot');
+
+    if (res.ok && data.text) {
+      // Добавляем ответ ассистента в историю и UI
+      activeHistory.push({ role: 'assistant', content: data.text });
+      addMessageEl(data.text, 'bot');
     } else {
+      // Если ошибка — убираем последнее сообщение из истории
+      activeHistory.pop();
       addMessageEl('Ошибка GPT: ' + (data.error || res.status), 'bot');
     }
+
     var chat = chats.find(function(c) { return c.id === activeChatId; });
     if (chat) chat.updated_at = new Date().toISOString();
   } catch (e) {
     typingEl.classList.remove('visible');
+    activeHistory.pop();
     addMessageEl('Ошибка соединения: ' + e.message, 'bot');
   }
 }
@@ -434,9 +411,7 @@ async function sendMessage() {
 // ══════════════════════════════════════════════════════
 function uploadFile() {
   var fi = document.createElement('input');
-  fi.type   = 'file';
-  fi.accept = 'audio/*';
-  fi.click();
+  fi.type = 'file'; fi.accept = 'audio/*'; fi.click();
   fi.onchange = async function() {
     var file = fi.files[0];
     if (!file) return;
@@ -448,17 +423,17 @@ function uploadFile() {
     typingEl.classList.add('visible');
     chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
     try {
-      var token = getToken();
       var fd = new FormData();
       fd.append('file', file);
       var res  = await fetch(API + '/api/transcribe', {
         method:  'POST',
-        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        headers: { 'Authorization': 'Bearer ' + getToken() },
         body:    fd
       });
       var data = await res.json();
       typingEl.classList.remove('visible');
-      addMessageEl(data.text || ('Ошибка: ' + (data.error || 'не удалось распознать')), 'bot');
+      var transcribed = data.text || ('Ошибка: ' + (data.error || 'не удалось распознать'));
+      addMessageEl(transcribed, 'bot');
     } catch (e) {
       typingEl.classList.remove('visible');
       addMessageEl('Ошибка: ' + e.message, 'bot');
@@ -467,26 +442,26 @@ function uploadFile() {
 }
 
 // ══════════════════════════════════════════════════════
-//  DOWNLOAD HISTORY
+//  DOWNLOAD HISTORY  — формат: user/assistant: текст
 // ══════════════════════════════════════════════════════
 function downloadHistory() {
   var chat = chats.find(function(c) { return c.id === activeChatId; });
   if (!chat) return;
-  var lines = [];
-  Array.from(chatWindowEl.children).forEach(function(ch) {
-    if (ch.id === 'typingIndicator') return;
-    var timeEl  = ch.querySelector('.msg-time');
-    var bubbleEl = ch.querySelector('.msg-bubble');
-    var time  = timeEl   ? timeEl.textContent   : '';
-    var text  = bubbleEl ? bubbleEl.textContent : '';
-    var who   = ch.classList.contains('user') ? 'Пользователь' : 'Бот';
-    if (text) lines.push('[' + time + '] ' + who + ': ' + text);
+  if (!activeHistory.length) {
+    addMessageEl('История пуста — нечего скачивать.', 'bot');
+    return;
+  }
+
+  var lines = activeHistory.map(function(msg) {
+    return msg.role + ': ' + msg.content;
   });
-  if (!lines.length) return;
+
+  var blob = new Blob([lines.join('\n\n')], { type: 'text/plain;charset=utf-8' });
   var a = document.createElement('a');
-  a.href     = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+  a.href     = URL.createObjectURL(blob);
   a.download = chat.name + '.txt';
   a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function nowTime() {
@@ -497,17 +472,13 @@ function nowTime() {
 //  EVENTS
 // ══════════════════════════════════════════════════════
 document.getElementById('sendBtn').addEventListener('click', sendMessage);
-messageInputEl.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') sendMessage();
-});
+messageInputEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') sendMessage(); });
 document.getElementById('newChatBtn').addEventListener('click', createNewChat);
 document.getElementById('downloadBtn').addEventListener('click', downloadHistory);
 document.getElementById('uploadBtn').addEventListener('click', uploadFile);
 document.getElementById('confirmCancelBtn').addEventListener('click', closeConfirm);
 document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
-confirmOverlay.addEventListener('click', function(e) {
-  if (e.target === confirmOverlay) closeConfirm();
-});
+confirmOverlay.addEventListener('click', function(e) { if (e.target === confirmOverlay) closeConfirm(); });
 document.getElementById('logoutBtn').addEventListener('click', function() {
   localStorage.clear();
   window.location.replace('login.html');
