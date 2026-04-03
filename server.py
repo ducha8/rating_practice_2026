@@ -3,7 +3,6 @@ import hashlib
 import tempfile
 import datetime
 
-import whisper
 import pymysql
 import pymysql.cursors
 from flask import Flask, request, jsonify, g, send_from_directory
@@ -29,12 +28,8 @@ def static_files(filename):
         return jsonify({"error": "Not found"}), 404
     return send_from_directory('.', filename)
 
-# ── Клиенты ───────────────────────────────────────────
+# ── OpenAI клиент ─────────────────────────────────────
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-print("Загрузка модели Whisper (large-v3)...")
-whisper_model = whisper.load_model("large-v3")
-print("Модель загружена.")
 
 JWT_SECRET  = os.environ.get("JWT_SECRET") or "fallback_secret_change_me"
 JWT_ALGO    = "HS256"
@@ -438,6 +433,123 @@ def chat():
 #  WHISPER
 # ══════════════════════════════════════════════════════
 
+@app.route("/api/chat/save-message", methods=["POST"])
+@require_auth
+def save_message():
+    """Сохранить одно сообщение в БД (например транскрипцию)."""
+    try:
+        data = request.get_json(silent=True) or {}
+    except Exception:
+        data = {}
+    chat_id = data.get("chat_id")
+    role    = data.get("role", "user")
+    content = data.get("content", "")
+    if not chat_id or not content:
+        return jsonify({"error": "Нет данных"}), 400
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute("SELECT id FROM chats WHERE id=%s AND user_id=%s", (chat_id, g.user_id))
+        if not cur.fetchone():
+            return jsonify({"error": "Чат не найден"}), 404
+        cur.execute(
+            "INSERT INTO messages (chat_id, role, content) VALUES (%s, %s, %s)",
+            (chat_id, role, content)
+        )
+        cur.execute("UPDATE chats SET updated_at=NOW() WHERE id=%s", (chat_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+def transcribe_file(file_path):
+    """
+    Транскрибирует аудиофайл через OpenAI Whisper API.
+    Если файл > 24 MB — автоматически разбивает на части по 10 минут
+    и склеивает результат.
+    """
+    MAX_BYTES = 24 * 1024 * 1024  # 24 MB — чуть меньше лимита OpenAI (25 MB)
+    CHUNK_MINUTES = 10             # длина каждого куска в минутах
+
+    file_size = os.path.getsize(file_path)
+
+    if file_size <= MAX_BYTES:
+        # Файл маленький — отправляем как есть
+        with open(file_path, "rb") as f:
+            response = openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                language="ru"
+            )
+        return response.text.strip()
+
+    # Файл большой — режем на части через pydub
+    try:
+        from pydub import AudioSegment
+    except ImportError:
+        raise RuntimeError(
+            "Файл больше 24 MB. Установите pydub: pip install pydub  "
+            "и ffmpeg: winget install ffmpeg"
+        )
+
+    print(f"Файл {file_size // (1024*1024)} MB — разбиваю на части по {CHUNK_MINUTES} мин...")
+
+    ext = os.path.splitext(file_path)[1].lower().lstrip('.')
+    if ext == 'mp3':
+        audio = AudioSegment.from_mp3(file_path)
+    elif ext == 'wav':
+        audio = AudioSegment.from_wav(file_path)
+    elif ext == 'm4a':
+        audio = AudioSegment.from_file(file_path, format='m4a')
+    elif ext == 'ogg':
+        audio = AudioSegment.from_ogg(file_path)
+    else:
+        audio = AudioSegment.from_file(file_path)
+
+    chunk_ms  = CHUNK_MINUTES * 60 * 1000  # миллисекунды
+    total_ms  = len(audio)
+    parts     = []
+    chunk_num = 0
+    tmp_files = []
+
+    try:
+        start = 0
+        while start < total_ms:
+            end   = min(start + chunk_ms, total_ms)
+            chunk = audio[start:end]
+            chunk_num += 1
+
+            # Сохраняем кусок во временный файл
+            tmp_chunk = tempfile.NamedTemporaryFile(
+                delete=False, suffix='.mp3'
+            )
+            tmp_chunk.close()
+            tmp_files.append(tmp_chunk.name)
+
+            chunk.export(tmp_chunk.name, format='mp3', bitrate='64k')
+            chunk_size = os.path.getsize(tmp_chunk.name)
+            print(f"  Часть {chunk_num}: {(end-start)//1000} сек, {chunk_size//(1024*1024)} MB")
+
+            with open(tmp_chunk.name, "rb") as f:
+                response = openai_client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                    language="ru"
+                )
+            parts.append(response.text.strip())
+            start = end
+
+    finally:
+        # Удаляем все временные файлы кусков
+        for tf in tmp_files:
+            try:
+                os.unlink(tf)
+            except Exception:
+                pass
+
+    full_text = ' '.join(parts)
+    print(f"Транскрипция завершена: {len(parts)} частей, {len(full_text)} символов")
+    return full_text
+
+
 @app.route("/api/transcribe", methods=["POST"])
 @require_auth
 def transcribe():
@@ -453,13 +565,18 @@ def transcribe():
         tmp_path = tmp.name
 
     try:
-        result = whisper_model.transcribe(tmp_path, language="ru")
-        return jsonify({"text": result["text"].strip()})
+        text = transcribe_file(tmp_path)
+        return jsonify({"text": text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
+    
+#http://localhost:5000
