@@ -1,4 +1,8 @@
 flask
-gunicorn
-pymysql
 flask-cors
+python-dotenv
+pymysql
+openai
+bcrypt
+PyJWT
+gunicorn
