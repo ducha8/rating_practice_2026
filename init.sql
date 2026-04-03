@@ -1,4 +1,5 @@
 -- Запустить: mysql -u root -p < init.sql
+-- Или в PowerShell: Get-Content init.sql | & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p chatapp
 
 CREATE DATABASE IF NOT EXISTS chatapp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE chatapp;
@@ -32,7 +33,6 @@ CREATE TABLE IF NOT EXISTS messages (
     INDEX idx_chat_messages (chat_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- refresh tokens для JWT rotation
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id    INT UNSIGNED NOT NULL,
@@ -41,4 +41,19 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_token_hash (token_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Таблица протоколов
+CREATE TABLE IF NOT EXISTS protocols (
+    id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id    INT UNSIGNED NOT NULL,
+    chat_id    INT UNSIGNED NOT NULL,
+    chat_name  VARCHAR(255) NOT NULL,
+    type       ENUM('full','fast') NOT NULL DEFAULT 'full',
+    filename   VARCHAR(255) NOT NULL,
+    content    LONGTEXT     NOT NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+    INDEX idx_user_protocols (user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

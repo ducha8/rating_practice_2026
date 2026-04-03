@@ -1,6 +1,6 @@
 const API = 'http://localhost:5000';
 
-// ── Auth helpers ───────────────────────────────────────
+// ── Auth ───────────────────────────────────────────────
 function getToken() { return localStorage.getItem('access_token'); }
 
 async function apiFetch(url, options) {
@@ -39,12 +39,13 @@ async function apiFetch(url, options) {
 if (!getToken()) window.location.replace('login.html');
 
 // ── State ──────────────────────────────────────────────
-var chats        = [];
-var activeChatId = null;
+var chats         = [];
+var activeChatId  = null;
 var activeHistory = [];
-var lastTranscription = ''; // Последний транскрибированный текст
+var lastTranscription = '';
+var isFirstMessage = false;
 
-// ── DOM refs ───────────────────────────────────────────
+// ── DOM ────────────────────────────────────────────────
 var chatListEl     = document.getElementById('chatList');
 var chatWindowEl   = document.getElementById('chatWindow');
 var typingEl       = document.getElementById('typingIndicator');
@@ -56,6 +57,153 @@ var greetingEl     = document.getElementById('greetingEl');
 
 var userEmail = localStorage.getItem('user_email') || '';
 if (greetingEl && userEmail) greetingEl.textContent = '👋 ' + userEmail;
+
+// ══════════════════════════════════════════════════════
+//  PROTOCOLS MODAL
+// ══════════════════════════════════════════════════════
+var protocolsOverlay = document.getElementById('protocolsOverlay');
+var protocolsList    = document.getElementById('protocolsList');
+
+async function openProtocols() {
+  protocolsOverlay.classList.add('visible');
+  protocolsList.innerHTML = '<div class="protocols-empty">Загрузка...</div>';
+  try {
+    var res  = await apiFetch('/api/protocols');
+    var data = await res.json();
+    renderProtocolsList(Array.isArray(data) ? data : []);
+  } catch (e) {
+    protocolsList.innerHTML = '<div class="protocols-empty">Ошибка загрузки: ' + e.message + '</div>';
+  }
+}
+
+function renderProtocolsList(items) {
+  protocolsList.innerHTML = '';
+  if (!items.length) {
+    var empty = document.createElement('div');
+    empty.className = 'protocols-empty';
+    empty.innerHTML = 'Протоколов пока нет.<br>Загрузите аудио и нажмите<br>«Полное заполнение» или «Быстрое заполнение».';
+    protocolsList.appendChild(empty);
+    return;
+  }
+  items.forEach(function(p) {
+    var item = document.createElement('div');
+    item.className = 'protocol-item';
+
+    var info = document.createElement('div');
+    info.className = 'protocol-item-info';
+
+    var name = document.createElement('div');
+    name.className = 'protocol-item-name';
+    name.textContent = p.filename;
+
+    var meta = document.createElement('div');
+    meta.className = 'protocol-item-meta';
+    meta.textContent = (p.type === 'full' ? 'Полный' : 'Быстрый') + ' · ' + p.chat_name + ' · ' + p.created_at.substring(0, 16).replace('T', ' ');
+
+    info.appendChild(name);
+    info.appendChild(meta);
+
+    var actions = document.createElement('div');
+    actions.className = 'protocol-item-actions';
+
+    var dlBtn = document.createElement('button');
+    dlBtn.className = 'protocol-download-btn';
+    dlBtn.textContent = '⬇ Скачать';
+    dlBtn.addEventListener('click', function() { downloadProtocolById(p.id, p.filename); });
+
+    var delBtn = document.createElement('button');
+    delBtn.className = 'protocol-delete-btn';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Удалить';
+    delBtn.addEventListener('click', async function() {
+      if (!confirm('Удалить протокол «' + p.filename + '»?')) return;
+      await apiFetch('/api/protocols/' + p.id, { method: 'DELETE' }).catch(function() {});
+      openProtocols();
+    });
+
+    actions.appendChild(dlBtn);
+    actions.appendChild(delBtn);
+    item.appendChild(info);
+    item.appendChild(actions);
+    protocolsList.appendChild(item);
+  });
+}
+
+async function downloadProtocolById(id, filename) {
+  try {
+    var res  = await apiFetch('/api/protocols/' + id);
+    var data = await res.json();
+    if (!res.ok) { alert('Ошибка: ' + data.error); return; }
+    var blob = new Blob([data.content], { type: 'text/markdown;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { alert('Ошибка скачивания: ' + e.message); }
+}
+
+function closeProtocols() { protocolsOverlay.classList.remove('visible'); }
+document.getElementById('protocolsBtn').addEventListener('click', openProtocols);
+document.getElementById('protocolsCloseBtn').addEventListener('click', closeProtocols);
+protocolsOverlay.addEventListener('click', function(e) { if (e.target === protocolsOverlay) closeProtocols(); });
+
+// ══════════════════════════════════════════════════════
+//  AUDIO → TEXT MODAL
+// ══════════════════════════════════════════════════════
+var audioOverlay    = document.getElementById('audioOverlay');
+var audioMsg        = document.getElementById('audioMsg');
+var audioResult     = document.getElementById('audioResult');
+var audioTextResult = document.getElementById('audioTextResult');
+
+function openAudioModal() {
+  audioMsg.className = 'inline-msg';
+  audioMsg.textContent = '';
+  audioResult.style.display = 'none';
+  audioTextResult.value = '';
+  audioOverlay.classList.add('visible');
+}
+function closeAudioModal() { audioOverlay.classList.remove('visible'); }
+
+document.getElementById('audioToTextBtn').addEventListener('click', openAudioModal);
+document.getElementById('audioCloseBtn').addEventListener('click', closeAudioModal);
+audioOverlay.addEventListener('click', function(e) { if (e.target === audioOverlay) closeAudioModal(); });
+
+document.getElementById('audioUploadBtn').addEventListener('click', function() {
+  var fi = document.createElement('input');
+  fi.type = 'file'; fi.accept = 'audio/*'; fi.click();
+  fi.onchange = async function() {
+    var file = fi.files[0]; if (!file) return;
+    audioMsg.className = 'inline-msg success';
+    audioMsg.textContent = '⏳ Распознаю: ' + file.name + '... Это может занять до 1 минуты.';
+    audioResult.style.display = 'none';
+    document.getElementById('audioUploadBtn').disabled = true;
+
+    try {
+      var fd = new FormData(); fd.append('file', file);
+      var res  = await fetch(API + '/api/transcribe', {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd
+      });
+      var data = await res.json();
+      if (data.text) {
+        audioMsg.className = 'inline-msg success';
+        audioMsg.textContent = '✅ Готово! ' + data.text.length + ' символов.';
+        audioTextResult.value = data.text;
+        audioResult.style.display = 'block';
+        // Сохраняем как последнюю транскрипцию для протоколов
+        lastTranscription = data.text;
+      } else {
+        audioMsg.className = 'inline-msg error';
+        audioMsg.textContent = 'Ошибка: ' + (data.error || 'не удалось распознать');
+      }
+    } catch (e) {
+      audioMsg.className = 'inline-msg error';
+      audioMsg.textContent = 'Ошибка: ' + e.message;
+    } finally {
+      document.getElementById('audioUploadBtn').disabled = false;
+    }
+  };
+});
 
 // ══════════════════════════════════════════════════════
 //  CHANGE PASSWORD MODAL
@@ -75,10 +223,7 @@ function openChangePw() {
   setTimeout(function() { document.getElementById('oldPassword').focus(); }, 200);
 }
 function closeChangePw() { changePwOverlay.classList.remove('visible'); }
-function showChangePwMsg(text, type) {
-  changePwMsg.className = 'inline-msg ' + (type || 'error');
-  changePwMsg.textContent = text;
-}
+function showChangePwMsg(text, type) { changePwMsg.className = 'inline-msg ' + (type || 'error'); changePwMsg.textContent = text; }
 function setChangePwLoading(loading) {
   if (loading) { changePwSubmitBtn.disabled = true; changePwSubmitBtn.innerHTML = '<span class="spinner"></span>Подождите...'; }
   else { changePwSubmitBtn.disabled = false; changePwSubmitBtn.textContent = 'Сменить пароль'; }
@@ -124,8 +269,7 @@ function showContextMenu(x, y, chatId, chatName) {
   if (rect.right > window.innerWidth) ctxMenu.style.left = (x - rect.width) + 'px';
   if (rect.bottom > window.innerHeight) ctxMenu.style.top = (y - rect.height) + 'px';
   ctxMenu.addEventListener('click', function(e) {
-    var btn = e.target.closest('[data-action]');
-    if (!btn) return;
+    var btn = e.target.closest('[data-action]'); if (!btn) return;
     if (btn.dataset.action === 'rename') startRename(chatId);
     if (btn.dataset.action === 'delete') openConfirm(chatId, chatName);
     removeCtxMenu();
@@ -157,7 +301,6 @@ function renderChatList() {
   chats.forEach(function(chat) {
     var item = document.createElement('div');
     item.className = 'chat-item' + (chat.id === activeChatId ? ' active' : '');
-    item.dataset.chatId = chat.id;
     if (renamingId === chat.id) {
       var inp = document.createElement('input');
       inp.type = 'text'; inp.className = 'rename-input'; inp.value = chat.name;
@@ -187,14 +330,19 @@ function renderMessages(messages) {
   messages = messages || [];
   Array.from(chatWindowEl.children).forEach(function(ch) { if (ch.id !== 'typingIndicator') ch.remove(); });
   activeHistory = [];
+  lastTranscription = '';
   messages.forEach(function(msg) {
     var role = msg.role === 'assistant' ? 'assistant' : 'user';
     var content = msg.content || msg.text || '';
     var time = msg.created_at ? msg.created_at.substring(11, 16) : nowTime();
     activeHistory.push({ role: role, content: content });
+    if (role === 'user' && content.startsWith('📝 Транскрипция:'))
+      lastTranscription = content.replace('📝 Транскрипция:', '').trim();
     chatWindowEl.insertBefore(buildMessageEl(content, role === 'assistant' ? 'bot' : 'user', time), typingEl);
   });
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
+  // Если нет сообщений — следующее будет первым
+  isFirstMessage = (messages.length === 0);
 }
 
 function buildMessageEl(text, roleClass, time) {
@@ -213,7 +361,7 @@ function addMessageEl(text, roleClass) {
 //  CHAT OPERATIONS
 // ══════════════════════════════════════════════════════
 async function switchChat(id) {
-  activeChatId = id; activeHistory = [];
+  activeChatId = id; activeHistory = []; lastTranscription = '';
   var chat = chats.find(function(c) { return c.id === id; });
   currentLabelEl.innerHTML = 'Текущий чат:<br><span>' + (chat ? chat.name : '—') + '</span>';
   renderChatList();
@@ -224,13 +372,6 @@ async function switchChat(id) {
     var msgs = await res.json();
     typingEl.classList.remove('visible');
     renderMessages(Array.isArray(msgs) ? msgs : []);
-    // Восстанавливаем транскрипцию из истории если она есть
-    lastTranscription = '';
-    activeHistory.forEach(function(m) {
-      if (m.role === 'user' && m.content.startsWith('📝 Транскрипция:')) {
-        lastTranscription = m.content.replace('📝 Транскрипция:', '').trim();
-      }
-    });
   } catch (e) {
     typingEl.classList.remove('visible');
     addMessageEl('Не удалось загрузить историю: ' + e.message, 'bot');
@@ -244,7 +385,7 @@ async function loadChats() {
     chats = await res.json();
     renderChatList();
     if (chats.length) switchChat(chats[0].id);
-    else currentLabelEl.innerHTML = 'Текущий чат:<br><span>—</span>';
+    else { currentLabelEl.innerHTML = 'Текущий чат:<br><span>—</span>'; isFirstMessage = true; }
   } catch (e) { currentLabelEl.innerHTML = 'Ошибка: ' + e.message; }
 }
 
@@ -255,6 +396,7 @@ async function createNewChat() {
     var chat = await res.json();
     chats.unshift(chat);
     await switchChat(chat.id);
+    isFirstMessage = true;
     return chat.id;
   } catch (e) { console.error('createNewChat:', e.message); return null; }
 }
@@ -273,28 +415,45 @@ async function confirmDelete() {
   else {
     currentLabelEl.innerHTML = 'Текущий чат:<br><span>—</span>';
     Array.from(chatWindowEl.children).forEach(function(ch) { if (ch.id !== 'typingIndicator') ch.remove(); });
+    isFirstMessage = true;
   }
 }
 
 // ══════════════════════════════════════════════════════
-//  SEND MESSAGE → GPT-4o
+//  SEND MESSAGE → GPT-4o  (авто-название)
 // ══════════════════════════════════════════════════════
 async function sendMessage() {
   var text = messageInputEl.value.trim();
   if (!text) return;
   if (!activeChatId) { var newId = await createNewChat(); if (!newId) return; }
+
+  var sendingFirst = isFirstMessage;
   activeHistory.push({ role: 'user', content: text });
   addMessageEl(text, 'user');
   messageInputEl.value = '';
+  isFirstMessage = false;
   typingEl.classList.add('visible');
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
+
   try {
-    var res = await apiFetch('/api/chat', { method: 'POST', body: JSON.stringify({ messages: activeHistory, chat_id: activeChatId }) });
+    var res = await apiFetch('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ messages: activeHistory, chat_id: activeChatId, is_first_message: sendingFirst })
+    });
     var data = await res.json();
     typingEl.classList.remove('visible');
     if (res.ok && data.text) {
       activeHistory.push({ role: 'assistant', content: data.text });
       addMessageEl(data.text, 'bot');
+      // Обновляем название чата если GPT придумал новое
+      if (data.new_name) {
+        var chat = chats.find(function(c) { return c.id === activeChatId; });
+        if (chat) {
+          chat.name = data.new_name;
+          currentLabelEl.innerHTML = 'Текущий чат:<br><span>' + data.new_name + '</span>';
+          renderChatList();
+        }
+      }
     } else {
       activeHistory.pop();
       addMessageEl('Ошибка GPT: ' + (data.error || res.status), 'bot');
@@ -306,189 +465,118 @@ async function sendMessage() {
 }
 
 // ══════════════════════════════════════════════════════
-//  UPLOAD AUDIO → WHISPER
+//  СОХРАНИТЬ ПРОТОКОЛ В БД
 // ══════════════════════════════════════════════════════
-function uploadFile() {
-  var fi = document.createElement('input');
-  fi.type = 'file'; fi.accept = 'audio/*'; fi.click();
-  fi.onchange = async function() {
-    var file = fi.files[0]; if (!file) return;
-    if (!activeChatId) { var newId = await createNewChat(); if (!newId) return; }
-    addMessageEl('🎵 Распознаю аудио: ' + file.name + '...', 'user');
-    typingEl.classList.add('visible');
-    chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
-    try {
-      var fd = new FormData(); fd.append('file', file);
-      var res = await fetch(API + '/api/transcribe', {
-        method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd
-      });
-      var data = await res.json();
-      typingEl.classList.remove('visible');
-      if (data.text) {
-        lastTranscription = data.text;
-        // Сохраняем транскрипцию в историю и показываем в чате
-        var msg = '📝 Транскрипция:\n' + data.text;
-        activeHistory.push({ role: 'user', content: msg });
-        addMessageEl(msg, 'user');
-        // Сохраняем в БД
-        await apiFetch('/api/chat/save-message', {
-          method: 'POST',
-          body: JSON.stringify({ chat_id: activeChatId, role: 'user', content: msg })
-        }).catch(function() {});
-        addMessageEl('✅ Аудио распознано. Нажмите "Полное заполнение" или "Быстрое заполнение" для создания протокола.', 'bot');
-      } else {
-        addMessageEl('Ошибка распознавания: ' + (data.error || 'неизвестная ошибка'), 'bot');
-      }
-    } catch (e) {
-      typingEl.classList.remove('visible');
-      addMessageEl('Ошибка: ' + e.message, 'bot');
-    }
-  };
+async function saveProtocolToDB(text, type) {
+  var chat = chats.find(function(c) { return c.id === activeChatId; });
+  var chatName = chat ? chat.name : 'Чат';
+  var date = new Date();
+  var dateStr = date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0');
+  var filename = (type === 'full' ? 'Протокол_полный' : 'Протокол_быстрый') + '_' + dateStr + '.md';
+
+  try {
+    await apiFetch('/api/protocols', {
+      method: 'POST',
+      body: JSON.stringify({
+        chat_id:   activeChatId,
+        chat_name: chatName,
+        type:      type,
+        filename:  filename,
+        content:   text
+      })
+    });
+  } catch (e) { console.error('Ошибка сохранения протокола:', e.message); }
+
+  // Показываем ссылку скачивания в чате
+  var blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+  var url  = URL.createObjectURL(blob);
+  var wrap = document.createElement('div'); wrap.className = 'message bot';
+  var bubble = document.createElement('div'); bubble.className = 'msg-bubble';
+  bubble.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+  var label = document.createElement('span'); label.textContent = '📄 Протокол сохранён:';
+  var link = document.createElement('a');
+  link.href = url; link.download = filename; link.textContent = '⬇ ' + filename;
+  link.style.cssText = 'color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;';
+  var hint = document.createElement('span');
+  hint.style.cssText = 'font-size:10px;color:var(--muted);';
+  hint.textContent = 'Все протоколы — в разделе «Протоколы» в сайдбаре';
+  bubble.appendChild(label); bubble.appendChild(link); bubble.appendChild(hint);
+  var t = document.createElement('div'); t.className = 'msg-time'; t.textContent = nowTime();
+  wrap.appendChild(bubble); wrap.appendChild(t);
+  chatWindowEl.insertBefore(wrap, typingEl);
+  chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
 }
 
 // ══════════════════════════════════════════════════════
 //  ПОЛНОЕ ЗАПОЛНЕНИЕ
 // ══════════════════════════════════════════════════════
 document.getElementById('fullFill').addEventListener('click', async function() {
-  if (!lastTranscription) {
-    addMessageEl('⚠️ Сначала загрузите аудиофайл для распознавания.', 'bot');
-    return;
-  }
+  if (!lastTranscription) { addMessageEl('⚠️ Сначала загрузите аудиофайл через «Аудио → Текст» или кнопку загрузки.', 'bot'); return; }
   if (!activeChatId) { var newId = await createNewChat(); if (!newId) return; }
-
   addMessageEl('🔄 Выполняю полное заполнение протокола...', 'bot');
   typingEl.classList.add('visible');
 
-  var prompt = 'Ты — секретарь совещания. На основе текста совещания составь подробный протокол поручений.\n\n' +
+  var prompt =
+    'Ты — секретарь совещания. На основе текста совещания составь подробный протокол поручений.\n\n' +
     'Текст совещания:\n"""\n' + lastTranscription + '\n"""\n\n' +
     'Составь протокол СТРОГО в следующем формате Markdown:\n\n' +
     '# ПРОТОКОЛ ПОРУЧЕНИЙ\n\n' +
     '**Дата:** [дата совещания или "не указана"]\n' +
     '**Место:** [место проведения или "не указано"]\n' +
     '**Председатель:** [ФИО председателя или "не указан"]\n' +
-    '**Присутствовали:** [список участников]\n\n' +
-    '---\n\n' +
+    '**Присутствовали:** [список участников]\n\n---\n\n' +
     '## ПОРУЧЕНИЯ\n\n' +
     'Для каждого поручения используй ТОЧНО такой формат:\n\n' +
     '### Поручение №[номер]\n\n' +
-    '**Текст поручения:** [полный текст поручения]\n\n' +
+    '**Текст поручения:** [полный текст]\n\n' +
     '**Ответственный:** [ФИО и должность]\n\n' +
     '**Соисполнители:** [ФИО или "не указаны"]\n\n' +
     '**Срок исполнения:** [дата]\n\n' +
     '**Периодичность:** [периодичность или "единовременно"]\n\n' +
-    '**Примечание:** [дополнительная информация или "—"]\n\n' +
-    '---\n\n' +
-    'После всех поручений добавь:\n\n' +
-    '## РЕШЕНИЕ\n\n' +
-    '[краткое общее решение совещания]\n\n' +
-    'Выдели ВСЕ поручения которые есть в тексте. Не пропускай ни одного.';
-
-  var messages = [{ role: 'user', content: prompt }];
+    '**Примечание:** [доп. информация или "—"]\n\n---\n\n' +
+    '## РЕШЕНИЕ\n\n[краткое общее решение совещания]\n\n' +
+    'Выдели ВСЕ поручения. Не пропускай ни одного.';
 
   try {
-    var res = await apiFetch('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ messages: messages, chat_id: activeChatId })
-    });
+    var res = await apiFetch('/api/chat', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], chat_id: activeChatId }) });
     var data = await res.json();
     typingEl.classList.remove('visible');
     if (res.ok && data.text) {
       activeHistory.push({ role: 'assistant', content: data.text });
       addMessageEl(data.text, 'bot');
-      // Создаём файл для скачивания
-      offerDownload(data.text, 'Протокол_полный');
-    } else {
-      addMessageEl('Ошибка GPT: ' + (data.error || 'нет ответа'), 'bot');
-    }
-  } catch (e) {
-    typingEl.classList.remove('visible');
-    addMessageEl('Ошибка: ' + e.message, 'bot');
-  }
+      await saveProtocolToDB(data.text, 'full');
+    } else { addMessageEl('Ошибка GPT: ' + (data.error || 'нет ответа'), 'bot'); }
+  } catch (e) { typingEl.classList.remove('visible'); addMessageEl('Ошибка: ' + e.message, 'bot'); }
 });
 
 // ══════════════════════════════════════════════════════
 //  БЫСТРОЕ ЗАПОЛНЕНИЕ
 // ══════════════════════════════════════════════════════
 document.getElementById('fastFill').addEventListener('click', async function() {
-  if (!lastTranscription) {
-    addMessageEl('⚠️ Сначала загрузите аудиофайл для распознавания.', 'bot');
-    return;
-  }
+  if (!lastTranscription) { addMessageEl('⚠️ Сначала загрузите аудиофайл через «Аудио → Текст» или кнопку загрузки.', 'bot'); return; }
   if (!activeChatId) { var newId = await createNewChat(); if (!newId) return; }
-
   addMessageEl('⚡ Выполняю быстрое заполнение...', 'bot');
   typingEl.classList.add('visible');
 
-  var prompt = 'Выдели поручения из текста совещания СТРОГО в формате:\n\n' +
-    'Поручение: [текст].\n' +
-    '- Ответственный: [имя].\n' +
-    '- Срок: [дата].\n\n' +
+  var prompt =
+    'Выдели поручения из текста совещания СТРОГО в формате:\n\n' +
+    'Поручение: [текст].\n- Ответственный: [имя].\n- Срок: [дата].\n\n' +
     'Без вводных фраз и заключений. Только список поручений.\n\n' +
     'Текст совещания:\n"""\n' + lastTranscription + '\n"""';
 
-  var messages = [{ role: 'user', content: prompt }];
-
   try {
-    var res = await apiFetch('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ messages: messages, chat_id: activeChatId })
-    });
+    var res = await apiFetch('/api/chat', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], chat_id: activeChatId }) });
     var data = await res.json();
     typingEl.classList.remove('visible');
     if (res.ok && data.text) {
       activeHistory.push({ role: 'assistant', content: data.text });
       addMessageEl(data.text, 'bot');
-      // Создаём файл для скачивания
-      offerDownload(data.text, 'Протокол_быстрый');
-    } else {
-      addMessageEl('Ошибка GPT: ' + (data.error || 'нет ответа'), 'bot');
-    }
-  } catch (e) {
-    typingEl.classList.remove('visible');
-    addMessageEl('Ошибка: ' + e.message, 'bot');
-  }
+      await saveProtocolToDB(data.text, 'fast');
+    } else { addMessageEl('Ошибка GPT: ' + (data.error || 'нет ответа'), 'bot'); }
+  } catch (e) { typingEl.classList.remove('visible'); addMessageEl('Ошибка: ' + e.message, 'bot'); }
 });
-
-// ══════════════════════════════════════════════════════
-//  СКАЧАТЬ ПРОТОКОЛ (Markdown файл)
-// ══════════════════════════════════════════════════════
-function offerDownload(markdownText, filename) {
-  var date = new Date();
-  var dateStr = date.getFullYear() + '-' +
-    String(date.getMonth() + 1).padStart(2, '0') + '-' +
-    String(date.getDate()).padStart(2, '0');
-  var fullFilename = filename + '_' + dateStr + '.md';
-
-  var blob = new Blob([markdownText], { type: 'text/markdown;charset=utf-8' });
-  var url  = URL.createObjectURL(blob);
-
-  // Показываем кнопку скачивания в чате
-  var wrap = document.createElement('div');
-  wrap.className = 'message bot';
-  var bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
-  bubble.style.display = 'flex';
-  bubble.style.flexDirection = 'column';
-  bubble.style.gap = '8px';
-
-  var label = document.createElement('span');
-  label.textContent = '📄 Протокол готов к скачиванию:';
-
-  var link = document.createElement('a');
-  link.href     = url;
-  link.download = fullFilename;
-  link.textContent = '⬇ Скачать ' + fullFilename;
-  link.style.cssText = 'color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;';
-
-  bubble.appendChild(label);
-  bubble.appendChild(link);
-
-  var t = document.createElement('div');
-  t.className = 'msg-time'; t.textContent = nowTime();
-  wrap.appendChild(bubble); wrap.appendChild(t);
-  chatWindowEl.insertBefore(wrap, typingEl);
-  chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
-}
 
 // ══════════════════════════════════════════════════════
 //  DOWNLOAD HISTORY
@@ -503,9 +591,7 @@ function downloadHistory() {
   URL.revokeObjectURL(a.href);
 }
 
-function nowTime() {
-  return new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
-}
+function nowTime() { return new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }); }
 
 // ══════════════════════════════════════════════════════
 //  EVENTS
@@ -514,12 +600,9 @@ document.getElementById('sendBtn').addEventListener('click', sendMessage);
 messageInputEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') sendMessage(); });
 document.getElementById('newChatBtn').addEventListener('click', createNewChat);
 document.getElementById('downloadBtn').addEventListener('click', downloadHistory);
-document.getElementById('uploadBtn').addEventListener('click', uploadFile);
 document.getElementById('confirmCancelBtn').addEventListener('click', closeConfirm);
 document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
 confirmOverlay.addEventListener('click', function(e) { if (e.target === confirmOverlay) closeConfirm(); });
-document.getElementById('logoutBtn').addEventListener('click', function() {
-  localStorage.clear(); window.location.replace('login.html');
-});
+document.getElementById('logoutBtn').addEventListener('click', function() { localStorage.clear(); window.location.replace('login.html'); });
 
 loadChats();

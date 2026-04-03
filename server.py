@@ -56,29 +56,17 @@ def get_db():
 def close_db(exc):
     db = g.pop("db", None)
     if db:
-        try:
-            db.close()
-        except Exception:
-            pass
+        try: db.close()
+        except: pass
 
 
 # ── JWT ───────────────────────────────────────────────
 def make_tokens(user_id, email):
     now = datetime.datetime.now(datetime.timezone.utc)
-    access_payload = {
-        "sub":   str(user_id),
-        "email": email,
-        "exp":   now + ACCESS_TTL,
-        "type":  "access"
-    }
-    refresh_payload = {
-        "sub":  str(user_id),
-        "exp":  now + REFRESH_TTL,
-        "type": "refresh"
-    }
+    access_payload  = {"sub": str(user_id), "email": email, "exp": now + ACCESS_TTL,  "type": "access"}
+    refresh_payload = {"sub": str(user_id),                 "exp": now + REFRESH_TTL, "type": "refresh"}
     access  = pyjwt.encode(access_payload,  JWT_SECRET, algorithm=JWT_ALGO)
     refresh = pyjwt.encode(refresh_payload, JWT_SECRET, algorithm=JWT_ALGO)
-
     token_hash = hashlib.sha256(refresh.encode()).hexdigest()
     db = get_db()
     with db.cursor() as cur:
@@ -88,7 +76,6 @@ def make_tokens(user_id, email):
         )
     db.commit()
     return access, refresh
-
 
 def require_auth(f):
     from functools import wraps
@@ -125,22 +112,17 @@ def register():
         return jsonify({"error": "Заполните все поля"}), 400
     if len(password) < 6:
         return jsonify({"error": "Пароль минимум 6 символов"}), 400
-
     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     db = get_db()
     try:
         with db.cursor() as cur:
-            cur.execute(
-                "INSERT INTO users (email, password_hash) VALUES (%s, %s)",
-                (email, pw_hash)
-            )
+            cur.execute("INSERT INTO users (email, password_hash) VALUES (%s, %s)", (email, pw_hash))
             user_id = cur.lastrowid
         db.commit()
     except pymysql.IntegrityError:
         return jsonify({"error": "Email уже зарегистрирован"}), 409
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
     access, refresh = make_tokens(user_id, email)
     return jsonify({"access_token": access, "refresh_token": refresh, "email": email}), 201
 
@@ -152,7 +134,6 @@ def login():
     password = data.get("password") or ""
     if not email or not password:
         return jsonify({"error": "Заполните все поля"}), 400
-
     db = get_db()
     try:
         with db.cursor() as cur:
@@ -160,10 +141,8 @@ def login():
             user = cur.fetchone()
     except Exception as e:
         return jsonify({"error": "Ошибка БД: " + str(e)}), 500
-
     if not user or not bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
         return jsonify({"error": "Неверный email или пароль"}), 401
-
     access, refresh = make_tokens(user["id"], email)
     return jsonify({"access_token": access, "refresh_token": refresh, "email": email})
 
@@ -174,7 +153,6 @@ def refresh_token():
     token = data.get("refresh_token") or ""
     if not token:
         return jsonify({"error": "Нет токена"}), 401
-
     try:
         payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
         if payload.get("type") != "refresh":
@@ -183,22 +161,16 @@ def refresh_token():
         return jsonify({"error": "Refresh токен истёк"}), 401
     except Exception as e:
         return jsonify({"error": "Недействительный токен: " + str(e)}), 401
-
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     db = get_db()
     with db.cursor() as cur:
-        cur.execute(
-            "SELECT id FROM refresh_tokens WHERE token_hash=%s AND expires_at > NOW()",
-            (token_hash,)
-        )
+        cur.execute("SELECT id FROM refresh_tokens WHERE token_hash=%s AND expires_at > NOW()", (token_hash,))
         row = cur.fetchone()
     if not row:
         return jsonify({"error": "Токен отозван или истёк"}), 401
-
     with db.cursor() as cur:
         cur.execute("DELETE FROM refresh_tokens WHERE token_hash=%s", (token_hash,))
     db.commit()
-
     user_id = int(payload["sub"])
     with db.cursor() as cur:
         cur.execute("SELECT email FROM users WHERE id=%s", (user_id,))
@@ -218,14 +190,12 @@ def change_password():
         return jsonify({"error": "Заполните все поля"}), 400
     if len(new_pw) < 6:
         return jsonify({"error": "Пароль минимум 6 символов"}), 400
-
     db = get_db()
     with db.cursor() as cur:
         cur.execute("SELECT password_hash FROM users WHERE id=%s", (g.user_id,))
         user = cur.fetchone()
     if not user or not bcrypt.checkpw(old_pw.encode(), user["password_hash"].encode()):
         return jsonify({"error": "Неверный текущий пароль"}), 400
-
     new_hash = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
     with db.cursor() as cur:
         cur.execute("UPDATE users SET password_hash=%s WHERE id=%s", (new_hash, g.user_id))
@@ -244,8 +214,7 @@ def list_chats():
     db = get_db()
     with db.cursor() as cur:
         cur.execute(
-            "SELECT id, name, created_at, updated_at FROM chats "
-            "WHERE user_id=%s ORDER BY updated_at DESC",
+            "SELECT id, name, created_at, updated_at FROM chats WHERE user_id=%s ORDER BY updated_at DESC",
             (g.user_id,)
         )
         rows = cur.fetchall()
@@ -258,31 +227,20 @@ def list_chats():
 @app.route("/api/chats", methods=["POST"])
 @require_auth
 def create_chat():
-    # Принимаем как JSON так и пустой body
     try:
         data = request.get_json(silent=True) or {}
-    except Exception:
+    except:
         data = {}
-
     d    = datetime.datetime.now()
-    name = (data.get("name") or "").strip()
-    if not name:
-        name = "Новый чат: " + d.strftime("%Y.%m.%d")
-
+    name = (data.get("name") or "").strip() or ("Новый чат: " + d.strftime("%Y.%m.%d"))
     db = get_db()
     try:
         with db.cursor() as cur:
-            cur.execute(
-                "INSERT INTO chats (user_id, name) VALUES (%s, %s)",
-                (g.user_id, name)
-            )
+            cur.execute("INSERT INTO chats (user_id, name) VALUES (%s, %s)", (g.user_id, name))
             chat_id = cur.lastrowid
         db.commit()
         with db.cursor() as cur:
-            cur.execute(
-                "SELECT id, name, created_at, updated_at FROM chats WHERE id=%s",
-                (chat_id,)
-            )
+            cur.execute("SELECT id, name, created_at, updated_at FROM chats WHERE id=%s", (chat_id,))
             chat = cur.fetchone()
         chat["created_at"] = chat["created_at"].isoformat()
         chat["updated_at"] = chat["updated_at"].isoformat()
@@ -296,17 +254,14 @@ def create_chat():
 def rename_chat(chat_id):
     try:
         data = request.get_json(silent=True) or {}
-    except Exception:
+    except:
         data = {}
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Пустое имя"}), 400
     db = get_db()
     with db.cursor() as cur:
-        cur.execute(
-            "UPDATE chats SET name=%s WHERE id=%s AND user_id=%s",
-            (name, chat_id, g.user_id)
-        )
+        cur.execute("UPDATE chats SET name=%s WHERE id=%s AND user_id=%s", (name, chat_id, g.user_id))
         affected = cur.rowcount
     db.commit()
     if not affected:
@@ -319,10 +274,7 @@ def rename_chat(chat_id):
 def delete_chat(chat_id):
     db = get_db()
     with db.cursor() as cur:
-        cur.execute(
-            "DELETE FROM chats WHERE id=%s AND user_id=%s",
-            (chat_id, g.user_id)
-        )
+        cur.execute("DELETE FROM chats WHERE id=%s AND user_id=%s", (chat_id, g.user_id))
         affected = cur.rowcount
     db.commit()
     if not affected:
@@ -335,15 +287,11 @@ def delete_chat(chat_id):
 def get_messages(chat_id):
     db = get_db()
     with db.cursor() as cur:
-        cur.execute(
-            "SELECT id FROM chats WHERE id=%s AND user_id=%s",
-            (chat_id, g.user_id)
-        )
+        cur.execute("SELECT id FROM chats WHERE id=%s AND user_id=%s", (chat_id, g.user_id))
         if not cur.fetchone():
             return jsonify({"error": "Чат не найден"}), 404
         cur.execute(
-            "SELECT id, role, content, created_at FROM messages "
-            "WHERE chat_id=%s ORDER BY created_at ASC",
+            "SELECT id, role, content, created_at FROM messages WHERE chat_id=%s ORDER BY created_at ASC",
             (chat_id,)
         )
         rows = cur.fetchall()
@@ -353,7 +301,7 @@ def get_messages(chat_id):
 
 
 # ══════════════════════════════════════════════════════
-#  GPT-4o
+#  GPT-4o CHAT  (с авто-названием чата)
 # ══════════════════════════════════════════════════════
 
 @app.route("/api/chat", methods=["POST"])
@@ -361,37 +309,32 @@ def get_messages(chat_id):
 def chat():
     try:
         data = request.get_json(silent=True) or {}
-    except Exception:
+    except:
         data = {}
-
     messages = data.get("messages") or []
     if not messages:
         return jsonify({"error": "Нет сообщений"}), 400
 
     chat_id   = data.get("chat_id")
     user_text = messages[-1].get("content", "") if messages else ""
+    is_first_message = data.get("is_first_message", False)
 
     db = get_db()
 
-    # Проверяем или создаём чат
     if chat_id:
         with db.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM chats WHERE id=%s AND user_id=%s",
-                (chat_id, g.user_id)
-            )
-            if not cur.fetchone():
+            cur.execute("SELECT id, name FROM chats WHERE id=%s AND user_id=%s", (chat_id, g.user_id))
+            chat_row = cur.fetchone()
+            if not chat_row:
                 return jsonify({"error": "Чат не найден"}), 404
     else:
         d    = datetime.datetime.now()
         name = "Новый чат: " + d.strftime("%Y.%m.%d")
         with db.cursor() as cur:
-            cur.execute(
-                "INSERT INTO chats (user_id, name) VALUES (%s, %s)",
-                (g.user_id, name)
-            )
+            cur.execute("INSERT INTO chats (user_id, name) VALUES (%s, %s)", (g.user_id, name))
             chat_id = cur.lastrowid
         db.commit()
+        is_first_message = True
 
     # Сохраняем сообщение пользователя
     with db.cursor() as cur:
@@ -426,20 +369,42 @@ def chat():
         cur.execute("UPDATE chats SET updated_at=NOW() WHERE id=%s", (chat_id,))
     db.commit()
 
-    return jsonify({"text": reply, "chat_id": chat_id})
+    # Авто-название чата по первому сообщению
+    new_name = None
+    if is_first_message and user_text and not user_text.startswith('📝 Транскрипция:'):
+        try:
+            title_response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Придумай короткое название для чата (максимум 5 слов) на основе первого сообщения пользователя. Только название, без кавычек и точек."
+                    },
+                    {"role": "user", "content": user_text}
+                ],
+                max_tokens=20
+            )
+            new_name = title_response.choices[0].message.content.strip()
+            if new_name:
+                with db.cursor() as cur:
+                    cur.execute("UPDATE chats SET name=%s WHERE id=%s", (new_name, chat_id))
+                db.commit()
+        except Exception:
+            pass  # Если не удалось — оставляем старое название
+
+    return jsonify({"text": reply, "chat_id": chat_id, "new_name": new_name})
 
 
 # ══════════════════════════════════════════════════════
-#  WHISPER
+#  SAVE MESSAGE (для транскрипции)
 # ══════════════════════════════════════════════════════
 
 @app.route("/api/chat/save-message", methods=["POST"])
 @require_auth
 def save_message():
-    """Сохранить одно сообщение в БД (например транскрипцию)."""
     try:
         data = request.get_json(silent=True) or {}
-    except Exception:
+    except:
         data = {}
     chat_id = data.get("chat_id")
     role    = data.get("role", "user")
@@ -460,35 +425,107 @@ def save_message():
     return jsonify({"ok": True})
 
 
+# ══════════════════════════════════════════════════════
+#  PROTOCOLS
+# ══════════════════════════════════════════════════════
+
+@app.route("/api/protocols", methods=["GET"])
+@require_auth
+def list_protocols():
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT id, chat_id, chat_name, type, filename, created_at FROM protocols "
+            "WHERE user_id=%s ORDER BY created_at DESC",
+            (g.user_id,)
+        )
+        rows = cur.fetchall()
+    for r in rows:
+        r["created_at"] = r["created_at"].isoformat()
+    return jsonify(rows)
+
+
+@app.route("/api/protocols", methods=["POST"])
+@require_auth
+def save_protocol():
+    try:
+        data = request.get_json(silent=True) or {}
+    except:
+        data = {}
+    chat_id   = data.get("chat_id")
+    chat_name = data.get("chat_name", "Чат")
+    ptype     = data.get("type", "full")
+    filename  = data.get("filename", "protocol.md")
+    content   = data.get("content", "")
+    if not chat_id or not content:
+        return jsonify({"error": "Нет данных"}), 400
+    db = get_db()
+    try:
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO protocols (user_id, chat_id, chat_name, type, filename, content) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (g.user_id, chat_id, chat_name, ptype, filename, content)
+            )
+            protocol_id = cur.lastrowid
+        db.commit()
+        return jsonify({"ok": True, "id": protocol_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/protocols/<int:protocol_id>", methods=["GET"])
+@require_auth
+def get_protocol(protocol_id):
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT id, chat_id, chat_name, type, filename, content, created_at FROM protocols "
+            "WHERE id=%s AND user_id=%s",
+            (protocol_id, g.user_id)
+        )
+        row = cur.fetchone()
+    if not row:
+        return jsonify({"error": "Протокол не найден"}), 404
+    row["created_at"] = row["created_at"].isoformat()
+    return jsonify(row)
+
+
+@app.route("/api/protocols/<int:protocol_id>", methods=["DELETE"])
+@require_auth
+def delete_protocol(protocol_id):
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM protocols WHERE id=%s AND user_id=%s", (protocol_id, g.user_id))
+        affected = cur.rowcount
+    db.commit()
+    if not affected:
+        return jsonify({"error": "Протокол не найден"}), 404
+    return jsonify({"ok": True})
+
+
+# ══════════════════════════════════════════════════════
+#  TRANSCRIBE  (OpenAI Whisper API + авто-разбивка)
+# ══════════════════════════════════════════════════════
+
 def transcribe_file(file_path):
-    """
-    Транскрибирует аудиофайл через OpenAI Whisper API.
-    Если файл > 24 MB — автоматически разбивает на части по 10 минут
-    и склеивает результат.
-    """
-    MAX_BYTES = 24 * 1024 * 1024  # 24 MB — чуть меньше лимита OpenAI (25 MB)
-    CHUNK_MINUTES = 10             # длина каждого куска в минутах
+    MAX_BYTES    = 24 * 1024 * 1024  # 24 MB
+    CHUNK_MINUTES = 10
 
     file_size = os.path.getsize(file_path)
 
     if file_size <= MAX_BYTES:
-        # Файл маленький — отправляем как есть
         with open(file_path, "rb") as f:
             response = openai_client.audio.transcriptions.create(
-                model="whisper-1",
-                file=f,
-                language="ru"
+                model="whisper-1", file=f, language="ru"
             )
         return response.text.strip()
 
-    # Файл большой — режем на части через pydub
+    # Файл большой — режем через pydub
     try:
         from pydub import AudioSegment
     except ImportError:
-        raise RuntimeError(
-            "Файл больше 24 MB. Установите pydub: pip install pydub  "
-            "и ffmpeg: winget install ffmpeg"
-        )
+        raise RuntimeError("Установите pydub: pip install pydub и ffmpeg: winget install ffmpeg")
 
     print(f"Файл {file_size // (1024*1024)} MB — разбиваю на части по {CHUNK_MINUTES} мин...")
 
@@ -504,7 +541,7 @@ def transcribe_file(file_path):
     else:
         audio = AudioSegment.from_file(file_path)
 
-    chunk_ms  = CHUNK_MINUTES * 60 * 1000  # миллисекунды
+    chunk_ms  = CHUNK_MINUTES * 60 * 1000
     total_ms  = len(audio)
     parts     = []
     chunk_num = 0
@@ -517,37 +554,27 @@ def transcribe_file(file_path):
             chunk = audio[start:end]
             chunk_num += 1
 
-            # Сохраняем кусок во временный файл
-            tmp_chunk = tempfile.NamedTemporaryFile(
-                delete=False, suffix='.mp3'
-            )
+            tmp_chunk = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
             tmp_chunk.close()
             tmp_files.append(tmp_chunk.name)
-
             chunk.export(tmp_chunk.name, format='mp3', bitrate='64k')
-            chunk_size = os.path.getsize(tmp_chunk.name)
-            print(f"  Часть {chunk_num}: {(end-start)//1000} сек, {chunk_size//(1024*1024)} MB")
+
+            print(f"  Часть {chunk_num}: {(end-start)//1000} сек")
 
             with open(tmp_chunk.name, "rb") as f:
                 response = openai_client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=f,
-                    language="ru"
+                    model="whisper-1", file=f, language="ru"
                 )
             parts.append(response.text.strip())
             start = end
-
     finally:
-        # Удаляем все временные файлы кусков
         for tf in tmp_files:
-            try:
-                os.unlink(tf)
-            except Exception:
-                pass
+            try: os.unlink(tf)
+            except: pass
 
-    full_text = ' '.join(parts)
-    print(f"Транскрипция завершена: {len(parts)} частей, {len(full_text)} символов")
-    return full_text
+    result = ' '.join(parts)
+    print(f"Готово: {len(parts)} частей, {len(result)} символов")
+    return result
 
 
 @app.route("/api/transcribe", methods=["POST"])
@@ -570,13 +597,9 @@ def transcribe():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+        try: os.unlink(tmp_path)
+        except: pass
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
-    
-#http://localhost:5000
