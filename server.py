@@ -1,7 +1,10 @@
 import os
+import re
 import hashlib
 import tempfile
 import datetime
+import atexit
+import subprocess
 
 import pymysql
 import pymysql.cursors
@@ -17,6 +20,54 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+# ── Ollama клиент (чат) ───────────────────────────────
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+
+ollama_client = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="ollama",
+)
+
+# ── Авто-запуск Ollama при старте ────────────────────
+def start_ollama():
+    import socket, time
+    try:
+        s = socket.create_connection(("127.0.0.1", 11434), timeout=1)
+        s.close()
+        print("✅ Ollama уже запущена.")
+        return
+    except OSError:
+        pass
+    try:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        for _ in range(20):
+            time.sleep(0.5)
+            try:
+                s = socket.create_connection(("127.0.0.1", 11434), timeout=1)
+                s.close()
+                print("✅ Ollama запущена.")
+                return
+            except OSError:
+                pass
+        print("⚠️ Ollama запущена, но ещё не отвечает — продолжаем.")
+    except Exception as e:
+        print("⚠️ Не удалось запустить Ollama:", e)
+
+# ── Авто-остановка Ollama при выходе ─────────────────
+def stop_ollama():
+    try:
+        subprocess.run(["ollama", "stop", OLLAMA_MODEL], timeout=5, capture_output=True)
+        subprocess.run(["taskkill", "/F", "/IM", "ollama.exe"], timeout=5, capture_output=True)
+        print("✅ Ollama остановлена.")
+    except Exception as e:
+        print("⚠️ Не удалось остановить Ollama:", e)
+
+atexit.register(stop_ollama)
+
 # ── Статические файлы ─────────────────────────────────
 @app.route('/')
 def root():
@@ -28,8 +79,9 @@ def static_files(filename):
         return jsonify({"error": "Not found"}), 404
     return send_from_directory('.', filename)
 
-# ── OpenAI клиент ─────────────────────────────────────
-openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# ── OpenAI клиент (только для Whisper транскрипции) ───
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 JWT_SECRET  = os.environ.get("JWT_SECRET") or "fallback_secret_change_me"
 JWT_ALGO    = "HS256"
@@ -301,7 +353,7 @@ def get_messages(chat_id):
 
 
 # ══════════════════════════════════════════════════════
-#  GPT-4o CHAT  (с авто-названием чата)
+#  OLLAMA CHAT  (с авто-названием чата)
 # ══════════════════════════════════════════════════════
 
 @app.route("/api/chat", methods=["POST"])
@@ -315,8 +367,8 @@ def chat():
     if not messages:
         return jsonify({"error": "Нет сообщений"}), 400
 
-    chat_id   = data.get("chat_id")
-    user_text = messages[-1].get("content", "") if messages else ""
+    chat_id          = data.get("chat_id")
+    user_text        = messages[-1].get("content", "") if messages else ""
     is_first_message = data.get("is_first_message", False)
 
     db = get_db()
@@ -345,20 +397,17 @@ def chat():
         cur.execute("UPDATE chats SET updated_at=NOW() WHERE id=%s", (chat_id,))
     db.commit()
 
-    # GPT-4o запрос
+    # Ollama запрос
     try:
-        response = openai_client.responses.create(
-            model="gpt-4o",
-            tools=[{"type": "web_search_preview"}],
-            input=messages
+        response = ollama_client.chat.completions.create(
+            model=OLLAMA_MODEL,
+            messages=messages
         )
-        reply = next(
-            item.content[0].text
-            for item in response.output
-            if item.type == "message"
-        )
+        reply = response.choices[0].message.content
+        # Убираем <think>...</think> блоки (qwen3 думает вслух)
+        reply = re.sub(r'<think>.*?</think>', '', reply, flags=re.DOTALL).strip()
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Ollama недоступна: " + str(e)}), 500
 
     # Сохраняем ответ
     with db.cursor() as cur:
@@ -373,23 +422,18 @@ def chat():
     new_name = None
     if is_first_message and user_text and not user_text.startswith('📝 Транскрипция:'):
         try:
-            title_response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Придумай короткое название для чата (максимум 5 слов) на основе первого сообщения пользователя. Только название, без кавычек и точек."
-                    },
-                    {"role": "user", "content": user_text}
-                ],
-                max_tokens=20
-            )
-            new_name = title_response.choices[0].message.content.strip()
-            if new_name:
+            # Берём первые 5 слов из сообщения пользователя
+            words = user_text.strip().split()
+            raw = " ".join(words[:5])
+            if len(words) > 5:
+                raw += "..."
+            if raw:
+                new_name = raw
                 with db.cursor() as cur:
                     cur.execute("UPDATE chats SET name=%s WHERE id=%s", (new_name, chat_id))
                 db.commit()
-        except Exception:
+        except Exception as title_err:
+            print(f"[DEBUG title error]: {title_err}")
             pass  # Если не удалось — оставляем старое название
 
     return jsonify({"text": reply, "chat_id": chat_id, "new_name": new_name})
@@ -505,11 +549,14 @@ def delete_protocol(protocol_id):
 
 
 # ══════════════════════════════════════════════════════
-#  TRANSCRIBE  (OpenAI Whisper API + авто-разбивка)
+#  TRANSCRIBE  (OpenAI Whisper — нужен OPENAI_API_KEY)
 # ══════════════════════════════════════════════════════
 
 def transcribe_file(file_path):
-    MAX_BYTES    = 24 * 1024 * 1024  # 24 MB
+    if not openai_client:
+        raise RuntimeError("Транскрипция недоступна: OPENAI_API_KEY не задан в .env")
+
+    MAX_BYTES     = 24 * 1024 * 1024  # 24 MB
     CHUNK_MINUTES = 10
 
     file_size = os.path.getsize(file_path)
@@ -525,9 +572,7 @@ def transcribe_file(file_path):
     try:
         from pydub import AudioSegment
     except ImportError:
-        raise RuntimeError("Установите pydub: pip install pydub и ffmpeg: winget install ffmpeg")
-
-    print(f"Файл {file_size // (1024*1024)} MB — разбиваю на части по {CHUNK_MINUTES} мин...")
+        raise RuntimeError("Установите pydub: pip install pydub и ffmpeg")
 
     ext = os.path.splitext(file_path)[1].lower().lstrip('.')
     if ext == 'mp3':
@@ -559,8 +604,6 @@ def transcribe_file(file_path):
             tmp_files.append(tmp_chunk.name)
             chunk.export(tmp_chunk.name, format='mp3', bitrate='64k')
 
-            print(f"  Часть {chunk_num}: {(end-start)//1000} сек")
-
             with open(tmp_chunk.name, "rb") as f:
                 response = openai_client.audio.transcriptions.create(
                     model="whisper-1", file=f, language="ru"
@@ -572,14 +615,15 @@ def transcribe_file(file_path):
             try: os.unlink(tf)
             except: pass
 
-    result = ' '.join(parts)
-    print(f"Готово: {len(parts)} частей, {len(result)} символов")
-    return result
+    return ' '.join(parts)
 
 
 @app.route("/api/transcribe", methods=["POST"])
 @require_auth
 def transcribe():
+    if not openai_client:
+        return jsonify({"error": "Транскрипция недоступна: OPENAI_API_KEY не задан в .env"}), 503
+
     if "file" not in request.files:
         return jsonify({"error": "Файл не передан"}), 400
     file = request.files["file"]
@@ -602,4 +646,11 @@ def transcribe():
 
 
 if __name__ == "__main__":
+    start_ollama()
+    print(f"🚀 Сервер запущен. Модель: {OLLAMA_MODEL}")
+    print("⛔ Для остановки нажмите Ctrl+C — Ollama выключится автоматически.")
     app.run(host="0.0.0.0", port=5000, debug=False)
+    
+    #pc http://localhost:5000
+    
+    #phone, other pc http://10.43.42.24:5000
