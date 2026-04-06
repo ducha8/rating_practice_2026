@@ -15,6 +15,13 @@ from openai import OpenAI
 import bcrypt
 import jwt as pyjwt
 
+# ── Faster Whisper (локальный, офлайн) ────────────────
+from faster_whisper import WhisperModel
+
+print("⏳ Загрузка Whisper medium (первый раз скачает ~769 MB)...")
+whisper_model = WhisperModel("medium", device="cpu", compute_type="int8")
+print("✅ Whisper medium загружен.")
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -28,7 +35,7 @@ ollama_client = OpenAI(
     api_key="ollama",
 )
 
-# ── Авто-запуск Ollama при старте ────────────────────
+# ── Авто-запуск Ollama при старте ─────────────────────
 def start_ollama():
     import socket, time
     try:
@@ -57,7 +64,7 @@ def start_ollama():
     except Exception as e:
         print("⚠️ Не удалось запустить Ollama:", e)
 
-# ── Авто-остановка Ollama при выходе ─────────────────
+# ── Авто-остановка Ollama при выходе ──────────────────
 def stop_ollama():
     try:
         subprocess.run(["ollama", "stop", OLLAMA_MODEL], timeout=5, capture_output=True)
@@ -78,10 +85,6 @@ def static_files(filename):
     if filename.startswith('api/'):
         return jsonify({"error": "Not found"}), 404
     return send_from_directory('.', filename)
-
-# ── OpenAI клиент (только для Whisper транскрипции) ───
-openai_api_key = os.environ.get("OPENAI_API_KEY")
-openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 JWT_SECRET  = os.environ.get("JWT_SECRET") or "fallback_secret_change_me"
 JWT_ALGO    = "HS256"
@@ -418,11 +421,10 @@ def chat():
         cur.execute("UPDATE chats SET updated_at=NOW() WHERE id=%s", (chat_id,))
     db.commit()
 
-    # Авто-название чата по первому сообщению
+    # Авто-название чата — берём первые 5 слов из сообщения
     new_name = None
     if is_first_message and user_text and not user_text.startswith('📝 Транскрипция:'):
         try:
-            # Берём первые 5 слов из сообщения пользователя
             words = user_text.strip().split()
             raw = " ".join(words[:5])
             if len(words) > 5:
@@ -432,9 +434,8 @@ def chat():
                 with db.cursor() as cur:
                     cur.execute("UPDATE chats SET name=%s WHERE id=%s", (new_name, chat_id))
                 db.commit()
-        except Exception as title_err:
-            print(f"[DEBUG title error]: {title_err}")
-            pass  # Если не удалось — оставляем старое название
+        except Exception:
+            pass
 
     return jsonify({"text": reply, "chat_id": chat_id, "new_name": new_name})
 
@@ -549,81 +550,32 @@ def delete_protocol(protocol_id):
 
 
 # ══════════════════════════════════════════════════════
-#  TRANSCRIBE  (OpenAI Whisper — нужен OPENAI_API_KEY)
+#  TRANSCRIBE  (faster-whisper, локально, офлайн)
 # ══════════════════════════════════════════════════════
 
 def transcribe_file(file_path):
-    if not openai_client:
-        raise RuntimeError("Транскрипция недоступна: OPENAI_API_KEY не задан в .env")
-
-    MAX_BYTES     = 24 * 1024 * 1024  # 24 MB
-    CHUNK_MINUTES = 10
-
-    file_size = os.path.getsize(file_path)
-
-    if file_size <= MAX_BYTES:
-        with open(file_path, "rb") as f:
-            response = openai_client.audio.transcriptions.create(
-                model="whisper-1", file=f, language="ru"
-            )
-        return response.text.strip()
-
-    # Файл большой — режем через pydub
-    try:
-        from pydub import AudioSegment
-    except ImportError:
-        raise RuntimeError("Установите pydub: pip install pydub и ffmpeg")
-
-    ext = os.path.splitext(file_path)[1].lower().lstrip('.')
-    if ext == 'mp3':
-        audio = AudioSegment.from_mp3(file_path)
-    elif ext == 'wav':
-        audio = AudioSegment.from_wav(file_path)
-    elif ext == 'm4a':
-        audio = AudioSegment.from_file(file_path, format='m4a')
-    elif ext == 'ogg':
-        audio = AudioSegment.from_ogg(file_path)
-    else:
-        audio = AudioSegment.from_file(file_path)
-
-    chunk_ms  = CHUNK_MINUTES * 60 * 1000
-    total_ms  = len(audio)
-    parts     = []
-    chunk_num = 0
-    tmp_files = []
-
-    try:
-        start = 0
-        while start < total_ms:
-            end   = min(start + chunk_ms, total_ms)
-            chunk = audio[start:end]
-            chunk_num += 1
-
-            tmp_chunk = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
-            tmp_chunk.close()
-            tmp_files.append(tmp_chunk.name)
-            chunk.export(tmp_chunk.name, format='mp3', bitrate='64k')
-
-            with open(tmp_chunk.name, "rb") as f:
-                response = openai_client.audio.transcriptions.create(
-                    model="whisper-1", file=f, language="ru"
-                )
-            parts.append(response.text.strip())
-            start = end
-    finally:
-        for tf in tmp_files:
-            try: os.unlink(tf)
-            except: pass
-
-    return ' '.join(parts)
+    """
+    Локальная транскрипция через faster-whisper medium.
+    Работает полностью офлайн, без API ключей.
+    15 мин аудио ≈ 1-3 мин на CPU с int8 квантизацией.
+    """
+    segments, info = whisper_model.transcribe(
+        file_path,
+        language="ru",
+        beam_size=5,
+        vad_filter=True,           # убирает тишину — быстрее
+        vad_parameters=dict(
+            min_silence_duration_ms=500
+        )
+    )
+    # segments — генератор, собираем текст
+    text = " ".join(segment.text.strip() for segment in segments)
+    return text.strip()
 
 
 @app.route("/api/transcribe", methods=["POST"])
 @require_auth
 def transcribe():
-    if not openai_client:
-        return jsonify({"error": "Транскрипция недоступна: OPENAI_API_KEY не задан в .env"}), 503
-
     if "file" not in request.files:
         return jsonify({"error": "Файл не передан"}), 400
     file = request.files["file"]
@@ -636,7 +588,9 @@ def transcribe():
         tmp_path = tmp.name
 
     try:
+        print(f"🎙️ Транскрибирую: {file.filename}")
         text = transcribe_file(tmp_path)
+        print(f"✅ Готово: {len(text)} символов")
         return jsonify({"text": text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -647,10 +601,10 @@ def transcribe():
 
 if __name__ == "__main__":
     start_ollama()
-    print(f"🚀 Сервер запущен. Модель: {OLLAMA_MODEL}")
-    print("⛔ Для остановки нажмите Ctrl+C — Ollama выключится автоматически.")
+    print(f"🚀 Сервер запущен. Модель чата: {OLLAMA_MODEL}")
+    print("🎙️ Транскрипция: faster-whisper medium (локально)")
+    print("⛔ Для остановки нажмите Ctrl+C")
     app.run(host="0.0.0.0", port=5000, debug=False)
-    
-    #pc http://localhost:5000
-    
-    #phone, other pc http://10.43.42.24:5000
+
+    # Локальный доступ:  http://localhost:5000
+    # Сеть / телефон:    http://10.43.42.24:5000
