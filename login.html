@@ -18,11 +18,8 @@
       font-family: 'JetBrains Mono', monospace; font-size: 13px;
       display: flex; align-items: center; justify-content: center;
     }
-    body::before {
-      content: ''; position: fixed; inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-      pointer-events: none; z-index: 0;
-    }
+
+    /* Лёгкий фон — только статичные градиенты, без SVG-фильтров */
     body::after {
       content: ''; position: fixed; inset: 0; z-index: 0;
       background:
@@ -30,6 +27,7 @@
         radial-gradient(ellipse 50% 60% at 80% 70%, rgba(99,102,241,0.06) 0%, transparent 70%);
       pointer-events: none;
     }
+
     .card {
       position: relative; z-index: 1;
       background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
@@ -133,7 +131,6 @@
 <script>
 const API = 'http://localhost:5000';
 
-// Если уже залогинен — проверяем токен и идём на главную
 (async function checkExistingAuth() {
   const token = localStorage.getItem('access_token');
   if (!token) return;
@@ -144,12 +141,9 @@ const API = 'http://localhost:5000';
     if (res.ok) {
       window.location.replace('index.html');
     } else {
-      // Токен недействителен — очищаем
       localStorage.clear();
     }
-  } catch {
-    // Сервер недоступен — остаёмся на логине
-  }
+  } catch {}
 })();
 
 const subtitles = {
@@ -188,35 +182,25 @@ function setLoading(btn, loading, origText) {
   }
 }
 
-// ── Login ──────────────────────────────────────────────
 document.getElementById('loginBtn').addEventListener('click', async function() {
   const btn      = this;
   const email    = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
-
   if (!email || !password) { showMsg('loginMsg', 'Заполните все поля'); return; }
-
   setLoading(btn, true, 'Войти');
   clearMessages();
-
   try {
     const res = await fetch(API + '/api/auth/login', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ email: email, password: password })
+      body:    JSON.stringify({ email, password })
     });
     const data = await res.json();
-
-    if (!res.ok) {
-      showMsg('loginMsg', data.error || 'Ошибка входа');
-      return;
-    }
-
+    if (!res.ok) { showMsg('loginMsg', data.error || 'Ошибка входа'); return; }
     localStorage.setItem('access_token',  data.access_token);
     localStorage.setItem('refresh_token', data.refresh_token);
     localStorage.setItem('user_email',    data.email);
     window.location.replace('index.html');
-
   } catch (e) {
     showMsg('loginMsg', 'Сервер недоступен: ' + e.message);
   } finally {
@@ -224,39 +208,29 @@ document.getElementById('loginBtn').addEventListener('click', async function() {
   }
 });
 
-// ── Register ───────────────────────────────────────────
 document.getElementById('registerBtn').addEventListener('click', async function() {
   const btn       = this;
   const email     = document.getElementById('regEmail').value.trim();
   const password  = document.getElementById('regPassword').value;
   const password2 = document.getElementById('regPassword2').value;
-
   if (!email || !password || !password2) { showMsg('registerMsg', 'Заполните все поля'); return; }
   if (password !== password2)            { showMsg('registerMsg', 'Пароли не совпадают'); return; }
   if (password.length < 6)              { showMsg('registerMsg', 'Пароль минимум 6 символов'); return; }
-
   setLoading(btn, true, 'Создать аккаунт');
   clearMessages();
-
   try {
     const res = await fetch(API + '/api/auth/register', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ email: email, password: password })
+      body:    JSON.stringify({ email, password })
     });
     const data = await res.json();
-
-    if (!res.ok) {
-      showMsg('registerMsg', data.error || 'Ошибка регистрации');
-      return;
-    }
-
+    if (!res.ok) { showMsg('registerMsg', data.error || 'Ошибка регистрации'); return; }
     localStorage.setItem('access_token',  data.access_token);
     localStorage.setItem('refresh_token', data.refresh_token);
     localStorage.setItem('user_email',    data.email);
     showMsg('registerMsg', 'Аккаунт создан! Перенаправление...', 'success');
-    setTimeout(function() { window.location.replace('index.html'); }, 800);
-
+    setTimeout(() => window.location.replace('index.html'), 800);
   } catch (e) {
     showMsg('registerMsg', 'Сервер недоступен: ' + e.message);
   } finally {
@@ -264,7 +238,6 @@ document.getElementById('registerBtn').addEventListener('click', async function(
   }
 });
 
-// ── Enter ──────────────────────────────────────────────
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Enter') return;
   const active = document.querySelector('.tab-btn.active').dataset.tab;

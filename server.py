@@ -1,41 +1,50 @@
 import os
 import re
+import gc
 import hashlib
 import tempfile
 import datetime
+import time
 import atexit
 import subprocess
 
+import torch
 import pymysql
 import pymysql.cursors
 from flask import Flask, request, jsonify, g, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 from openai import OpenAI
+from faster_whisper import WhisperModel
 import bcrypt
 import jwt as pyjwt
 
-# ── Faster Whisper (локальный, офлайн) ────────────────
-from faster_whisper import WhisperModel
-
-print("⏳ Загрузка Whisper medium (первый раз скачает ~769 MB)...")
-whisper_model = WhisperModel("medium", device="cpu", compute_type="int8")
-print("✅ Whisper medium загружен.")
+# ── Принудительно используем NVIDIA, игнорируем Intel ─
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_DEVICE_ORDER"]    = "PCI_BUS_ID"
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ── Ollama клиент (чат) ───────────────────────────────
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+# ── Ollama клиент ─────────────────────────────────────
+OLLAMA_MODEL       = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+WHISPER_MODEL_PATH = "small"
 
 ollama_client = OpenAI(
     base_url="http://localhost:11434/v1",
     api_key="ollama",
 )
 
-# ── Авто-запуск Ollama при старте ─────────────────────
+# Whisper загружается только во время транскрипции
+whisper_model = None
+
+
+# ══════════════════════════════════════════════════════
+#  OLLAMA — запуск / остановка / выгрузка модели
+# ══════════════════════════════════════════════════════
+
 def start_ollama():
     import socket, time
     try:
@@ -60,11 +69,23 @@ def start_ollama():
                 return
             except OSError:
                 pass
-        print("⚠️ Ollama запущена, но ещё не отвечает — продолжаем.")
     except Exception as e:
         print("⚠️ Не удалось запустить Ollama:", e)
 
-# ── Авто-остановка Ollama при выходе ──────────────────
+
+def unload_ollama_model():
+    try:
+        import requests
+        requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": OLLAMA_MODEL, "keep_alive": 0},
+            timeout=10
+        )
+        print("🗑️  Ollama модель выгружена из VRAM.")
+    except Exception as e:
+        print("⚠️ Не удалось выгрузить Ollama модель:", e)
+
+
 def stop_ollama():
     try:
         subprocess.run(["ollama", "stop", OLLAMA_MODEL], timeout=5, capture_output=True)
@@ -74,6 +95,74 @@ def stop_ollama():
         print("⚠️ Не удалось остановить Ollama:", e)
 
 atexit.register(stop_ollama)
+
+
+# ══════════════════════════════════════════════════════
+#  WHISPER — оптимизировано под RTX 3050 4 ГБ
+# ══════════════════════════════════════════════════════
+
+whisper_model = None
+
+
+def load_whisper():
+    """Загружает Whisper с настройками для 4 ГБ VRAM"""
+    global whisper_model
+    if whisper_model is not None:
+        print("✅ Whisper уже загружен.")
+        return
+
+    print("⏸️  Выгружаю Ollama из VRAM...")
+    unload_ollama_model()
+    time.sleep(2.0)
+
+    # Максимальная очистка памяти
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    gc.collect()
+    torch.cuda.synchronize()
+
+    vram_free = torch.cuda.mem_get_info()[0] / (1024 ** 3)
+    print(f"💾 Свободно VRAM перед загрузкой: {vram_free:.1f} ГБ")
+
+    try:
+        print("⏳ Загружаю модель small (int8_float16)...")
+        whisper_model = WhisperModel(
+            model_size_or_path="small",          # ← изменил с medium на small
+            device="cuda",
+            device_index=0,
+            compute_type="int8_float16",         # оптимально для 4 ГБ
+            cpu_threads=4,
+            num_workers=2
+        )
+        print("✅ small успешно загружена на GPU")
+
+        torch.cuda.synchronize()
+        used = (torch.cuda.mem_get_info()[1] - torch.cuda.mem_get_info()[0]) / (1024 ** 3)
+        print(f"📊 VRAM используется: ~{used:.1f} ГБ")
+
+    except Exception as e:
+        print(f"❌ Ошибка загрузки Whisper: {e}")
+        unload_whisper()
+        raise
+
+
+def unload_whisper():
+    """Безопасная выгрузка"""
+    global whisper_model
+    if whisper_model is not None:
+        print("🗑️  Выгружаю Whisper из VRAM...")
+        try:
+            del whisper_model
+        except:
+            pass
+        whisper_model = None
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        print("✅ Whisper выгружен.")
+    else:
+        print("ℹ️  Whisper уже выгружен.")
+
 
 # ── Статические файлы ─────────────────────────────────
 @app.route('/')
@@ -86,6 +175,7 @@ def static_files(filename):
         return jsonify({"error": "Not found"}), 404
     return send_from_directory('.', filename)
 
+
 JWT_SECRET  = os.environ.get("JWT_SECRET") or "fallback_secret_change_me"
 JWT_ALGO    = "HS256"
 ACCESS_TTL  = datetime.timedelta(hours=24)
@@ -96,12 +186,12 @@ REFRESH_TTL = datetime.timedelta(days=30)
 def get_db():
     if "db" not in g:
         g.db = pymysql.connect(
-            host     = os.environ.get("MYSQL_HOST", "localhost"),
-            port     = int(os.environ.get("MYSQL_PORT", 3306)),
-            user     = os.environ.get("MYSQL_USER", "root"),
-            password = os.environ.get("MYSQL_PASSWORD", ""),
-            database = os.environ.get("MYSQL_DATABASE", "chatapp"),
-            charset  = "utf8mb4",
+            host        = os.environ.get("MYSQL_HOST", "localhost"),
+            port        = int(os.environ.get("MYSQL_PORT", 3306)),
+            user        = os.environ.get("MYSQL_USER", "root"),
+            password    = os.environ.get("MYSQL_PASSWORD", ""),
+            database    = os.environ.get("MYSQL_DATABASE", "chatapp"),
+            charset     = "utf8mb4",
             cursorclass = pymysql.cursors.DictCursor,
             autocommit  = False,
         )
@@ -356,7 +446,7 @@ def get_messages(chat_id):
 
 
 # ══════════════════════════════════════════════════════
-#  OLLAMA CHAT  (с авто-названием чата)
+#  OLLAMA CHAT
 # ══════════════════════════════════════════════════════
 
 @app.route("/api/chat", methods=["POST"])
@@ -379,8 +469,7 @@ def chat():
     if chat_id:
         with db.cursor() as cur:
             cur.execute("SELECT id, name FROM chats WHERE id=%s AND user_id=%s", (chat_id, g.user_id))
-            chat_row = cur.fetchone()
-            if not chat_row:
+            if not cur.fetchone():
                 return jsonify({"error": "Чат не найден"}), 404
     else:
         d    = datetime.datetime.now()
@@ -391,7 +480,6 @@ def chat():
         db.commit()
         is_first_message = True
 
-    # Сохраняем сообщение пользователя
     with db.cursor() as cur:
         cur.execute(
             "INSERT INTO messages (chat_id, role, content) VALUES (%s, 'user', %s)",
@@ -400,19 +488,18 @@ def chat():
         cur.execute("UPDATE chats SET updated_at=NOW() WHERE id=%s", (chat_id,))
     db.commit()
 
-    # Ollama запрос
     try:
         response = ollama_client.chat.completions.create(
             model=OLLAMA_MODEL,
             messages=messages
         )
         reply = response.choices[0].message.content
-        # Убираем <think>...</think> блоки (qwen3 думает вслух)
         reply = re.sub(r'<think>.*?</think>', '', reply, flags=re.DOTALL).strip()
     except Exception as e:
         return jsonify({"error": "Ollama недоступна: " + str(e)}), 500
+    finally:
+        unload_ollama_model()
 
-    # Сохраняем ответ
     with db.cursor() as cur:
         cur.execute(
             "INSERT INTO messages (chat_id, role, content) VALUES (%s, 'assistant', %s)",
@@ -421,7 +508,6 @@ def chat():
         cur.execute("UPDATE chats SET updated_at=NOW() WHERE id=%s", (chat_id,))
     db.commit()
 
-    # Авто-название чата — берём первые 5 слов из сообщения
     new_name = None
     if is_first_message and user_text and not user_text.startswith('📝 Транскрипция:'):
         try:
@@ -441,7 +527,7 @@ def chat():
 
 
 # ══════════════════════════════════════════════════════
-#  SAVE MESSAGE (для транскрипции)
+#  SAVE MESSAGE
 # ══════════════════════════════════════════════════════
 
 @app.route("/api/chat/save-message", methods=["POST"])
@@ -550,60 +636,93 @@ def delete_protocol(protocol_id):
 
 
 # ══════════════════════════════════════════════════════
-#  TRANSCRIBE  (faster-whisper, локально, офлайн)
+#  TRANSCRIBE
 # ══════════════════════════════════════════════════════
-
-def transcribe_file(file_path):
-    """
-    Локальная транскрипция через faster-whisper medium.
-    Работает полностью офлайн, без API ключей.
-    15 мин аудио ≈ 1-3 мин на CPU с int8 квантизацией.
-    """
-    segments, info = whisper_model.transcribe(
-        file_path,
-        language="ru",
-        beam_size=5,
-        vad_filter=True,           # убирает тишину — быстрее
-        vad_parameters=dict(
-            min_silence_duration_ms=500
-        )
-    )
-    # segments — генератор, собираем текст
-    text = " ".join(segment.text.strip() for segment in segments)
-    return text.strip()
-
 
 @app.route("/api/transcribe", methods=["POST"])
 @require_auth
 def transcribe():
     if "file" not in request.files:
         return jsonify({"error": "Файл не передан"}), 400
+    
     file = request.files["file"]
     if file.filename == "":
         return jsonify({"error": "Пустое имя файла"}), 400
 
-    suffix = os.path.splitext(file.filename)[1] or ".mp3"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        file.save(tmp.name)
-        tmp_path = tmp.name
+    suffix = os.path.splitext(file.filename)[1].lower() or ".mp3"
+    tmp_path = None
+    wav_path = None
 
     try:
-        print(f"🎙️ Транскрибирую: {file.filename}")
-        text = transcribe_file(tmp_path)
-        print(f"✅ Готово: {len(text)} символов")
-        return jsonify({"text": text})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        try: os.unlink(tmp_path)
-        except: pass
+        # Сохраняем файл временно
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            file.save(tmp.name)
+            tmp_path = tmp.name
 
+        # Конвертируем в 16kHz mono wav
+        wav_path = tmp_path + ".wav"
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
+            capture_output=True,
+            check=True
+        )
+
+        load_whisper()
+        print(f"🎙️  Транскрибирую: {file.filename} (модель: small)")
+
+        # Оптимизированные параметры для 4 ГБ VRAM и длинных файлов
+        segments, info = whisper_model.transcribe(
+            wav_path,
+            language="ru",
+            beam_size=1,                    # уменьшено с 5 → сильно экономит память
+            best_of=1,
+            patience=1.0,
+            temperature=0.0,
+            vad_filter=True,
+            vad_parameters=dict(
+                min_silence_duration_ms=700,
+                max_speech_duration_s=25,      # ограничиваем сегменты
+                threshold=0.5
+            ),
+            word_timestamps=False
+        )
+
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        print(f"✅ Готово: {len(text)} символов | Длительность: {info.duration:.1f} сек")
+
+        return jsonify({
+            "text": text,
+            "duration": round(info.duration, 1)
+        })
+
+    except Exception as e:
+        error_str = str(e).lower()
+        if any(x in error_str for x in ["out of memory", "cuda", "c10", "memory"]):
+            msg = "Недостаточно VRAM на видеокарте. Файл слишком большой для 4 ГБ. Попробуйте более короткий файл или разбейте его."
+        else:
+            msg = f"Ошибка транскрипции: {str(e)}"
+        return jsonify({"error": msg}), 500
+
+    finally:
+        # Надёжная очистка
+        unload_whisper()
+        for path in [tmp_path, wav_path]:
+            try:
+                if path and os.path.exists(path):
+                    os.unlink(path)
+            except:
+                pass
+        torch.cuda.empty_cache()
+        gc.collect()
 
 if __name__ == "__main__":
     start_ollama()
-    print(f"🚀 Сервер запущен. Модель чата: {OLLAMA_MODEL}")
-    print("🎙️ Транскрипция: faster-whisper medium (локально)")
-    print("⛔ Для остановки нажмите Ctrl+C")
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "недоступна"
+    print(f"🚀 Сервер запущен.")
+    print(f"🤖 Модель чата:    {OLLAMA_MODEL} (выгружается после каждого ответа)")
+    print(f"🎙️  Транскрипция:  faster-whisper {WHISPER_MODEL_PATH} (GPU по запросу, int8)")
+    print(f"💾 GPU:            {gpu_name}")
+    print(f"⛔ Для остановки нажмите Ctrl+C")
     app.run(host="0.0.0.0", port=5000, debug=False)
 
     # Локальный доступ:  http://localhost:5000

@@ -175,7 +175,7 @@ document.getElementById('audioUploadBtn').addEventListener('click', function() {
   fi.onchange = async function() {
     var file = fi.files[0]; if (!file) return;
     audioMsg.className = 'inline-msg success';
-    audioMsg.textContent = '⏳ Распознаю: ' + file.name + '... Это может занять до 1 минуты.';
+    audioMsg.textContent = '⏳ Распознаю: ' + file.name + '... Это может занять несколько минут.';
     audioResult.style.display = 'none';
     document.getElementById('audioUploadBtn').disabled = true;
 
