@@ -190,7 +190,6 @@ document.getElementById('audioUploadBtn').addEventListener('click', function() {
         audioMsg.textContent = '✅ Готово! ' + data.text.length + ' символов.';
         audioTextResult.value = data.text;
         audioResult.style.display = 'block';
-        // Сохраняем как последнюю транскрипцию для протоколов
         lastTranscription = data.text;
       } else {
         audioMsg.className = 'inline-msg error';
@@ -203,6 +202,120 @@ document.getElementById('audioUploadBtn').addEventListener('click', function() {
       document.getElementById('audioUploadBtn').disabled = false;
     }
   };
+});
+
+// ══════════════════════════════════════════════════════
+//  IMAGE RECOGNITION MODAL
+// ══════════════════════════════════════════════════════
+var imageOverlay      = document.getElementById('imageOverlay');
+var imageMsg          = document.getElementById('imageMsg');
+var imagePreview      = document.getElementById('imagePreview');
+var imagePreviewImg   = document.getElementById('imagePreviewImg');
+var imageResult       = document.getElementById('imageResult');
+var imageTextResult   = document.getElementById('imageTextResult');
+var imageQuestionInp  = document.getElementById('imageQuestion');
+var imageUploadBtn    = document.getElementById('imageUploadBtn');
+var imageAnalyzeBtn   = document.getElementById('imageAnalyzeBtn');
+var imageCloseBtn     = document.getElementById('imageCloseBtn');
+
+var pendingImageFile = null;
+
+function openImageModal() {
+  imageMsg.className = 'inline-msg';
+  imageMsg.textContent = '';
+  imagePreview.style.display = 'none';
+  imagePreviewImg.src = '';
+  imageResult.style.display = 'none';
+  imageTextResult.value = '';
+  imageQuestionInp.value = '';
+  imageAnalyzeBtn.disabled = true;
+  pendingImageFile = null;
+  imageOverlay.classList.add('visible');
+}
+function closeImageModal() { imageOverlay.classList.remove('visible'); }
+
+document.getElementById('imageRecognizeBtn').addEventListener('click', openImageModal);
+imageCloseBtn.addEventListener('click', closeImageModal);
+imageOverlay.addEventListener('click', function(e) { if (e.target === imageOverlay) closeImageModal(); });
+
+// Выбор файла изображения
+imageUploadBtn.addEventListener('click', function() {
+  var fi = document.createElement('input');
+  fi.type = 'file';
+  fi.accept = 'image/jpeg,image/png,image/gif,image/webp,image/bmp';
+  fi.click();
+  fi.onchange = function() {
+    var file = fi.files[0];
+    if (!file) return;
+    pendingImageFile = file;
+
+    // Показываем превью
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      imagePreviewImg.src = e.target.result;
+      imagePreview.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+
+    imageMsg.className = 'inline-msg success';
+    imageMsg.textContent = '✅ Файл выбран: ' + file.name + ' (' + Math.round(file.size / 1024) + ' КБ)';
+    imageResult.style.display = 'none';
+    imageTextResult.value = '';
+    imageAnalyzeBtn.disabled = false;
+  };
+});
+
+// Анализ изображения
+imageAnalyzeBtn.addEventListener('click', async function() {
+  if (!pendingImageFile) { return; }
+
+  var question = imageQuestionInp.value.trim();
+  imageMsg.className = 'inline-msg success';
+  imageMsg.textContent = '🔍 Анализирую изображение... Это может занять 15–60 секунд.';
+  imageResult.style.display = 'none';
+  imageAnalyzeBtn.disabled = true;
+  imageUploadBtn.disabled = true;
+
+  try {
+    var fd = new FormData();
+    fd.append('file', pendingImageFile);
+    if (question) fd.append('question', question);
+
+    var res = await fetch(API + '/api/recognize-image', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: fd
+    });
+    var data = await res.json();
+
+    if (res.ok && data.text) {
+      imageMsg.className = 'inline-msg success';
+      imageMsg.textContent = '✅ Готово! Модель: ' + (data.model || 'vision') + '.';
+      imageTextResult.value = data.text;
+      imageResult.style.display = 'block';
+    } else {
+      imageMsg.className = 'inline-msg error';
+      imageMsg.textContent = 'Ошибка: ' + (data.error || 'нет ответа от модели');
+    }
+  } catch (e) {
+    imageMsg.className = 'inline-msg error';
+    imageMsg.textContent = 'Ошибка: ' + e.message;
+  } finally {
+    imageAnalyzeBtn.disabled = false;
+    imageUploadBtn.disabled = false;
+  }
+});
+
+// Кнопка «Отправить в чат»
+document.getElementById('imageSendToChatBtn').addEventListener('click', function() {
+  var text = imageTextResult.value.trim();
+  if (!text) return;
+  var filename = pendingImageFile ? pendingImageFile.name : 'изображение';
+  var msgText = '🖼️ Анализ изображения «' + filename + '»:\n\n' + text;
+  closeImageModal();
+  // Вставляем в поле ввода, чтобы пользователь мог отправить или отредактировать
+  messageInputEl.value = msgText;
+  messageInputEl.focus();
 });
 
 // ══════════════════════════════════════════════════════
@@ -341,7 +454,6 @@ function renderMessages(messages) {
     chatWindowEl.insertBefore(buildMessageEl(content, role === 'assistant' ? 'bot' : 'user', time), typingEl);
   });
   chatWindowEl.scrollTop = chatWindowEl.scrollHeight;
-  // Если нет сообщений — следующее будет первым
   isFirstMessage = (messages.length === 0);
 }
 
@@ -420,7 +532,7 @@ async function confirmDelete() {
 }
 
 // ══════════════════════════════════════════════════════
-//  SEND MESSAGE → GPT-4o  (авто-название)
+//  SEND MESSAGE
 // ══════════════════════════════════════════════════════
 async function sendMessage() {
   var text = messageInputEl.value.trim();
@@ -445,7 +557,6 @@ async function sendMessage() {
     if (res.ok && data.text) {
       activeHistory.push({ role: 'assistant', content: data.text });
       addMessageEl(data.text, 'bot');
-      // Обновляем название чата если GPT придумал новое
       if (data.new_name) {
         var chat = chats.find(function(c) { return c.id === activeChatId; });
         if (chat) {
@@ -479,17 +590,10 @@ async function saveProtocolToDB(text, type) {
   try {
     await apiFetch('/api/protocols', {
       method: 'POST',
-      body: JSON.stringify({
-        chat_id:   activeChatId,
-        chat_name: chatName,
-        type:      type,
-        filename:  filename,
-        content:   text
-      })
+      body: JSON.stringify({ chat_id: activeChatId, chat_name: chatName, type: type, filename: filename, content: text })
     });
   } catch (e) { console.error('Ошибка сохранения протокола:', e.message); }
 
-  // Показываем ссылку скачивания в чате
   var blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
   var url  = URL.createObjectURL(blob);
   var wrap = document.createElement('div'); wrap.className = 'message bot';
@@ -513,7 +617,7 @@ async function saveProtocolToDB(text, type) {
 //  ПОЛНОЕ ЗАПОЛНЕНИЕ
 // ══════════════════════════════════════════════════════
 document.getElementById('fullFill').addEventListener('click', async function() {
-  if (!lastTranscription) { addMessageEl('⚠️ Сначала загрузите аудиофайл через «Аудио → Текст» или кнопку загрузки.', 'bot'); return; }
+  if (!lastTranscription) { addMessageEl('⚠️ Сначала загрузите аудиофайл через «Аудио → Текст».', 'bot'); return; }
   if (!activeChatId) { var newId = await createNewChat(); if (!newId) return; }
   addMessageEl('🔄 Выполняю полное заполнение протокола...', 'bot');
   typingEl.classList.add('visible');
@@ -555,7 +659,7 @@ document.getElementById('fullFill').addEventListener('click', async function() {
 //  БЫСТРОЕ ЗАПОЛНЕНИЕ
 // ══════════════════════════════════════════════════════
 document.getElementById('fastFill').addEventListener('click', async function() {
-  if (!lastTranscription) { addMessageEl('⚠️ Сначала загрузите аудиофайл через «Аудио → Текст» или кнопку загрузки.', 'bot'); return; }
+  if (!lastTranscription) { addMessageEl('⚠️ Сначала загрузите аудиофайл через «Аудио → Текст».', 'bot'); return; }
   if (!activeChatId) { var newId = await createNewChat(); if (!newId) return; }
   addMessageEl('⚡ Выполняю быстрое заполнение...', 'bot');
   typingEl.classList.add('visible');

@@ -16,7 +16,6 @@
     }
     html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; overflow: hidden; }
 
-    /* Убран тяжёлый SVG feTurbulence — только статичные градиенты */
     body::after {
       content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background:
@@ -61,12 +60,14 @@
     .ctx-item:hover { background: var(--surface2); }
     .ctx-item.danger { color: var(--danger); }
     .ctx-item.danger:hover { background: rgba(239,68,68,0.12); }
+
+    /* ── MODALS ── */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
     .modal-overlay.visible { opacity: 1; pointer-events: all; }
     .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px; min-width: 300px; max-width: 520px; width: 100%; transform: translateY(8px); transition: transform 0.2s; }
     .modal-overlay.visible .modal-box { transform: translateY(0); }
     .modal-title { font-family: 'Unbounded', sans-serif; font-size: 13px; font-weight: 600; color: var(--text); }
-    .modal-sub { font-size: 11px; color: var(--muted); }
+    .modal-sub { font-size: 11px; color: var(--muted); line-height: 1.6; }
     .modal-form { display: flex; flex-direction: column; gap: 12px; }
     .form-group { display: flex; flex-direction: column; gap: 5px; }
     .form-label { font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
@@ -84,7 +85,18 @@
     .inline-msg { font-size: 11px; padding: 9px 11px; border-radius: 7px; display: none; }
     .inline-msg.error   { display: block; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; }
     .inline-msg.success { display: block; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: #86efac; }
-    /* Protocols */
+
+    /* ── IMAGE MODAL ── */
+    .image-preview-box {
+      border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+      background: var(--surface2); max-height: 220px; display: flex; align-items: center; justify-content: center;
+    }
+    .image-preview-box img { max-width: 100%; max-height: 220px; object-fit: contain; display: block; }
+    .image-result-area { display: flex; flex-direction: column; gap: 8px; }
+    .image-result-label { font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    #imageTextResult { min-height: 130px; resize: vertical; font-size: 12px; line-height: 1.6; }
+
+    /* ── PROTOCOLS ── */
     .protocols-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
     .protocols-list::-webkit-scrollbar { width: 3px; }
     .protocols-list::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
@@ -98,7 +110,8 @@
     .protocol-delete-btn { padding: 6px 10px; border-radius: 7px; border: 1px solid rgba(239,68,68,0.3); background: none; color: var(--danger); font-family: 'JetBrains Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.15s; }
     .protocol-delete-btn:hover { background: rgba(239,68,68,0.1); }
     .protocols-empty { text-align: center; color: var(--muted); font-size: 12px; padding: 24px 0; line-height: 1.8; }
-    /* Main */
+
+    /* ── MAIN ── */
     .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
     .topbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface); flex-shrink: 0; }
     .topbar-title { font-family: 'Unbounded', sans-serif; font-size: 15px; font-weight: 600; background: linear-gradient(135deg, #e2e8f0 30%, var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -123,7 +136,6 @@
     .typing-dot:nth-child(2) { animation-delay: 0.2s; }
     .typing-dot:nth-child(3) { animation-delay: 0.4s; }
     @keyframes bounce { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-5px); opacity: 1; } }
-    /* Остановить bounce когда индикатор скрыт — снижает нагрузку */
     .typing-indicator:not(.visible) .typing-dot { animation: none; }
     .input-area { padding: 14px 24px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
     .msg-input { flex: 1; min-width: 120px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.15s; }
@@ -135,7 +147,6 @@
     .send-btn:hover { opacity: 0.9; transform: translateY(-1px); }
     .send-btn:active { transform: translateY(0); }
     .status-bar { padding: 6px 24px; font-size: 10px; color: var(--muted); background: var(--bg); border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-    /* Статичная точка вместо бесконечной анимации pulse */
     .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
     .spinner { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 5px; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -152,6 +163,7 @@
     <nav class="nav-menu">
       <button class="nav-btn" id="protocolsBtn"><span class="icon">📋</span> Протоколы</button>
       <button class="nav-btn" id="audioToTextBtn"><span class="icon">🎙️</span> Аудио → Текст</button>
+      <button class="nav-btn" id="imageRecognizeBtn"><span class="icon">🖼️</span> Распознать фото</button>
       <button class="nav-btn" id="changePwBtn"><span class="icon">🔑</span> Сменить пароль</button>
       <button class="nav-btn danger" id="logoutBtn"><span class="icon">🚪</span> Выйти</button>
     </nav>
@@ -229,7 +241,7 @@
 <div class="modal-overlay" id="audioOverlay">
   <div class="modal-box">
     <div class="modal-title">🎙️ Аудио → Текст</div>
-    <div class="modal-sub">Загрузите аудиофайл для распознавания речи. Поддерживаются mp3, wav, m4a, ogg. Файлы больше 24 MB разбиваются автоматически.</div>
+    <div class="modal-sub">Загрузите аудиофайл для распознавания речи. Поддерживаются mp3, wav, m4a, ogg.</div>
     <div id="audioMsg" class="inline-msg"></div>
     <div id="audioResult" style="display:none;">
       <div class="form-label" style="margin-bottom:6px;">Результат распознавания:</div>
@@ -242,6 +254,50 @@
   </div>
 </div>
 
+<!-- IMAGE RECOGNITION -->
+<div class="modal-overlay" id="imageOverlay">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-title">🖼️ Распознавание изображений</div>
+    <div class="modal-sub">Загрузите фото или скриншот. Модель опишет содержимое, прочитает текст, ответит на вопрос. Поддерживаются JPG, PNG, WEBP, GIF, BMP. Макс. 20 МБ.</div>
+
+    <div id="imageMsg" class="inline-msg"></div>
+
+    <!-- Превью -->
+    <div id="imagePreview" class="image-preview-box" style="display:none;">
+      <img id="imagePreviewImg" src="" alt="Превью">
+    </div>
+
+    <!-- Вопрос к изображению -->
+    <div class="form-group">
+      <label class="form-label">Вопрос к изображению (необязательно)</label>
+      <input class="form-input" id="imageQuestion" type="text"
+        placeholder="Например: Какой текст написан? Что за объект? Опиши детали.">
+    </div>
+
+    <!-- Результат -->
+    <div id="imageResult" class="image-result-area" style="display:none;">
+      <div class="image-result-label">Результат анализа:</div>
+      <textarea id="imageTextResult" class="form-input" readonly></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" id="imageCloseBtn">Закрыть</button>
+      <button class="btn-cancel" id="imageSendToChatBtn" style="display:none; color:var(--accent); border-color:var(--accent);">💬 В чат</button>
+      <button class="btn-primary" id="imageUploadBtn">📎 Выбрать фото</button>
+      <button class="btn-primary" id="imageAnalyzeBtn" disabled>🔍 Анализировать</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Показываем кнопку «В чат» когда есть результат
+var _imageResult = document.getElementById('imageResult');
+var _imageSendBtn = document.getElementById('imageSendToChatBtn');
+var observer = new MutationObserver(function() {
+  _imageSendBtn.style.display = (_imageResult.style.display !== 'none') ? 'block' : 'none';
+});
+observer.observe(_imageResult, { attributes: true, attributeFilter: ['style'] });
+</script>
 <script src="script.js"></script>
 </body>
 </html>
