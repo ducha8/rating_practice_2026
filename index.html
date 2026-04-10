@@ -164,6 +164,7 @@
       <button class="nav-btn" id="protocolsBtn"><span class="icon">📋</span> Протоколы</button>
       <button class="nav-btn" id="audioToTextBtn"><span class="icon">🎙️</span> Аудио → Текст</button>
       <button class="nav-btn" id="imageRecognizeBtn"><span class="icon">🖼️</span> Распознать фото</button>
+      <button class="nav-btn" id="potholeDetectBtn"><span class="icon">🕳️</span> Детекция ям</button>
       <button class="nav-btn" id="changePwBtn"><span class="icon">🔑</span> Сменить пароль</button>
       <button class="nav-btn danger" id="logoutBtn"><span class="icon">🚪</span> Выйти</button>
     </nav>
@@ -298,6 +299,82 @@ var observer = new MutationObserver(function() {
 });
 observer.observe(_imageResult, { attributes: true, attributeFilter: ['style'] });
 </script>
+
+<!-- POTHOLE DETECTION MODAL -->
+<div class="modal-overlay" id="potholeOverlay">
+  <div class="modal-box" style="max-width:680px;">
+    <div class="modal-title">🕳️ Детекция ям и дефектов дороги</div>
+    <div class="modal-sub" id="potholeModelStatus">YOLOv8n-seg · Загрузка статуса...</div>
+
+    <div id="potholeMsg" class="inline-msg"></div>
+
+    <!-- Превью до/после -->
+    <div id="potholePreviewWrap" style="display:none;">
+      <div style="display:flex; gap:10px; align-items:flex-start;">
+        <div style="flex:1;">
+          <div class="form-label" style="margin-bottom:5px;">Оригинал</div>
+          <div class="image-preview-box"><img id="potholeOrigImg" src="" alt="Оригинал"></div>
+        </div>
+        <div style="flex:1;">
+          <div class="form-label" style="margin-bottom:5px;">Детекция</div>
+          <div class="image-preview-box"><img id="potholeResultImg" src="" alt="Результат" style="display:none;"></div>
+          <div id="potholeResultPlaceholder" style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">Результат появится здесь</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Слайдер уверенности -->
+    <div class="form-group">
+      <label class="form-label">Порог уверенности: <span id="confValueLabel">25%</span></label>
+      <input type="range" id="potholeConf" min="10" max="80" value="25" step="5"
+        style="width:100%;accent-color:var(--accent);cursor:pointer;">
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px;">
+        <span>10% — больше находок</span><span>80% — только явные</span>
+      </div>
+    </div>
+
+    <!-- Список найденных ям -->
+    <div id="potholeList" style="display:none;">
+      <div class="form-label" style="margin-bottom:6px;">Найденные дефекты:</div>
+      <div id="potholeListItems" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding-right:4px;"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" id="potholeCloseBtn">Закрыть</button>
+      <button class="btn-cancel" id="potholeSendToChatBtn" style="display:none;color:var(--accent);border-color:var(--accent);">💬 В чат</button>
+      <button class="btn-primary" id="potholeUploadBtn">📎 Выбрать фото</button>
+      <button class="btn-primary" id="potholeAnalyzeBtn" disabled>🔍 Анализировать</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Severity badges */
+.sev-badge {
+  display:inline-block; padding:2px 8px; border-radius:5px;
+  font-size:10px; font-weight:700; letter-spacing:0.05em;
+}
+.sev-Микро      { background:rgba(34,197,94,0.2);  color:#86efac; }
+.sev-Малая      { background:rgba(234,179,8,0.2);  color:#fde68a; }
+.sev-Средняя    { background:rgba(249,115,22,0.2); color:#fdba74; }
+.sev-Крупная    { background:rgba(239,68,68,0.25); color:#fca5a5; }
+.sev-Критическая{ background:rgba(220,38,38,0.35); color:#ef4444; }
+.pothole-item {
+  display:flex; align-items:center; gap:10px; padding:8px 12px;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:8px; font-size:11px;
+}
+.pothole-num {
+  width:22px; height:22px; border-radius:50%;
+  background:var(--danger); color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:11px; flex-shrink:0;
+}
+.pothole-info { flex:1; display:flex; flex-direction:column; gap:3px; }
+.pothole-conf { font-size:10px; color:var(--muted); }
+.pothole-area { font-size:10px; color:var(--muted); }
+</style>
+
 <script src="script.js"></script>
 </body>
 </html>

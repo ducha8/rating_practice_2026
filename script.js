@@ -710,3 +710,233 @@ confirmOverlay.addEventListener('click', function(e) { if (e.target === confirmO
 document.getElementById('logoutBtn').addEventListener('click', function() { localStorage.clear(); window.location.replace('login.html'); });
 
 loadChats();
+
+// ══════════════════════════════════════════════════════
+//  POTHOLE DETECTION MODAL
+// ══════════════════════════════════════════════════════
+var potholeOverlay      = document.getElementById('potholeOverlay');
+var potholeMsg          = document.getElementById('potholeMsg');
+var potholeModelStatus  = document.getElementById('potholeModelStatus');
+var potholePreviewWrap  = document.getElementById('potholePreviewWrap');
+var potholeOrigImg      = document.getElementById('potholeOrigImg');
+var potholeResultImg    = document.getElementById('potholeResultImg');
+var potholeResultPH     = document.getElementById('potholeResultPlaceholder');
+var potholeList         = document.getElementById('potholeList');
+var potholeListItems    = document.getElementById('potholeListItems');
+var potholeConfSlider   = document.getElementById('potholeConf');
+var potholeConfLabel    = document.getElementById('confValueLabel');
+var potholeUploadBtn    = document.getElementById('potholeUploadBtn');
+var potholeAnalyzeBtn   = document.getElementById('potholeAnalyzeBtn');
+var potholeCloseBtn     = document.getElementById('potholeCloseBtn');
+var potholeSendBtn      = document.getElementById('potholeSendToChatBtn');
+
+var pendingPotholeFile    = null;
+var lastPotholeDetections = [];
+
+// Слайдер уверенности
+potholeConfSlider.addEventListener('input', function() {
+  potholeConfLabel.textContent = potholeConfSlider.value + '%';
+});
+
+// Статус модели
+async function fetchPotholeModelStatus() {
+  try {
+    var res  = await apiFetch('/api/pothole-model-status');
+    var data = await res.json();
+    if (data.loaded) {
+      potholeModelStatus.innerHTML =
+        '<span style="color:var(--' + (data.is_custom ? 'success' : 'accent') + ')">' +
+        (data.is_custom ? '✅ Дообученная модель (ямы)' : '⚠️ Базовая YOLOv8n-seg') +
+        '</span> · устройство: ' + (data.device === 'cpu' ? 'CPU' : 'GPU');
+    } else {
+      potholeModelStatus.textContent = '❌ Модель не загружена';
+    }
+  } catch (e) {
+    potholeModelStatus.textContent = '⚠️ Нет связи с сервером';
+  }
+}
+
+function openPotholeModal() {
+  // Сброс
+  potholeMsg.className        = 'inline-msg';
+  potholeMsg.textContent      = '';
+  potholePreviewWrap.style.display = 'none';
+  potholeOrigImg.src          = '';
+  potholeResultImg.src        = '';
+  potholeResultImg.style.display = 'none';
+  potholeResultPH.style.display  = 'flex';
+  potholeList.style.display   = 'none';
+  potholeListItems.innerHTML  = '';
+  potholeAnalyzeBtn.disabled  = true;
+  potholeSendBtn.style.display = 'none';
+  pendingPotholeFile           = null;
+  lastPotholeDetections        = [];
+
+  potholeOverlay.classList.add('visible');
+  fetchPotholeModelStatus();
+}
+
+function closePotholeModal() {
+  potholeOverlay.classList.remove('visible');
+}
+
+document.getElementById('potholeDetectBtn').addEventListener('click', openPotholeModal);
+potholeCloseBtn.addEventListener('click', closePotholeModal);
+potholeOverlay.addEventListener('click', function(e) {
+  if (e.target === potholeOverlay) closePotholeModal();
+});
+
+// Выбор файла
+potholeUploadBtn.addEventListener('click', function() {
+  var fi = document.createElement('input');
+  fi.type   = 'file';
+  fi.accept = 'image/jpeg,image/png,image/webp,image/bmp';
+  fi.click();
+  fi.onchange = function() {
+    var file = fi.files[0];
+    if (!file) return;
+    pendingPotholeFile = file;
+
+    // Превью оригинала
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      potholeOrigImg.src             = e.target.result;
+      potholePreviewWrap.style.display = 'block';
+      potholeResultImg.style.display = 'none';
+      potholeResultPH.style.display  = 'flex';
+      potholeList.style.display      = 'none';
+      potholeSendBtn.style.display   = 'none';
+    };
+    reader.readAsDataURL(file);
+
+    potholeMsg.className    = 'inline-msg success';
+    potholeMsg.textContent  = '✅ Файл выбран: ' + file.name + ' (' + Math.round(file.size / 1024) + ' КБ)';
+    potholeAnalyzeBtn.disabled = false;
+  };
+});
+
+// Анализ
+potholeAnalyzeBtn.addEventListener('click', async function() {
+  if (!pendingPotholeFile) return;
+
+  var conf = parseInt(potholeConfSlider.value, 10) / 100;
+
+  potholeMsg.className   = 'inline-msg success';
+  potholeMsg.textContent = '🔍 Анализирую дорожное полотно... Это займёт 5–20 секунд.';
+  potholeResultImg.style.display = 'none';
+  potholeResultPH.style.display  = 'flex';
+  potholeResultPH.textContent    = '⏳ Обработка...';
+  potholeList.style.display      = 'none';
+  potholeAnalyzeBtn.disabled     = true;
+  potholeUploadBtn.disabled      = true;
+  potholeSendBtn.style.display   = 'none';
+
+  try {
+    var fd = new FormData();
+    fd.append('file', pendingPotholeFile);
+    fd.append('conf', conf.toString());
+
+    var res = await fetch(API + '/api/detect-potholes', {
+      method:  'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body:    fd
+    });
+    var data = await res.json();
+
+    if (res.ok) {
+      // Показываем результирующее изображение
+      potholeResultImg.src           = 'data:image/jpeg;base64,' + data.annotated_image;
+      potholeResultImg.style.display = 'block';
+      potholeResultPH.style.display  = 'none';
+
+      lastPotholeDetections = data.detections || [];
+
+      if (data.count === 0) {
+        potholeMsg.className   = 'inline-msg success';
+        potholeMsg.textContent = '✅ Дефектов не обнаружено! (время: ' + data.processing_ms + ' мс)';
+      } else {
+        potholeMsg.className   = 'inline-msg success';
+        potholeMsg.textContent = '⚠️ Найдено дефектов: ' + data.count + ' · время: ' + data.processing_ms + ' мс';
+
+        // Рендерим список
+        renderPotholeList(data.detections);
+        potholeList.style.display    = 'block';
+        potholeSendBtn.style.display = 'inline-block';
+      }
+
+      if (!data.model_type || data.model_type === 'base') {
+        potholeMsg.textContent += ' · ⚠️ Базовая модель (обучите на ямах для точных результатов)';
+      }
+    } else {
+      potholeMsg.className   = 'inline-msg error';
+      potholeMsg.textContent = 'Ошибка: ' + (data.error || 'нет ответа');
+      potholeResultPH.textContent = 'Ошибка';
+    }
+  } catch (e) {
+    potholeMsg.className   = 'inline-msg error';
+    potholeMsg.textContent = 'Ошибка: ' + e.message;
+  } finally {
+    potholeAnalyzeBtn.disabled = false;
+    potholeUploadBtn.disabled  = false;
+  }
+});
+
+function renderPotholeList(detections) {
+  potholeListItems.innerHTML = '';
+  detections.forEach(function(d) {
+    var item = document.createElement('div');
+    item.className = 'pothole-item';
+
+    var num = document.createElement('div');
+    num.className   = 'pothole-num';
+    num.textContent = d.id;
+
+    var info = document.createElement('div');
+    info.className = 'pothole-info';
+
+    var badge = document.createElement('span');
+    badge.className = 'sev-badge sev-' + d.severity;
+    badge.textContent = d.severity;
+
+    var confEl = document.createElement('div');
+    confEl.className   = 'pothole-conf';
+    confEl.textContent = 'Уверенность: ' + Math.round(d.confidence * 100) + '%';
+
+    var areaEl = document.createElement('div');
+    areaEl.className   = 'pothole-area';
+    areaEl.textContent = 'Площадь: ~' + d.area_m2_est + ' м² · ' +
+                         Math.round(d.area_ratio * 100 * 10) / 10 + '% кадра' +
+                         ' · центр (' + d.center.x + ', ' + d.center.y + ')';
+
+    info.appendChild(badge);
+    info.appendChild(confEl);
+    info.appendChild(areaEl);
+    item.appendChild(num);
+    item.appendChild(info);
+    potholeListItems.appendChild(item);
+  });
+}
+
+// Отправить в чат
+potholeSendBtn.addEventListener('click', function() {
+  if (!lastPotholeDetections.length) return;
+  var filename = pendingPotholeFile ? pendingPotholeFile.name : 'изображение';
+
+  var lines = ['🕳️ Анализ дорожного полотна «' + filename + '»:\n'];
+  lines.push('Обнаружено дефектов: ' + lastPotholeDetections.length + '\n');
+
+  lastPotholeDetections.forEach(function(d) {
+    lines.push(
+      '#' + d.id + ' ' + d.severity +
+      ' | уверенность: ' + Math.round(d.confidence * 100) + '%' +
+      ' | площадь: ~' + d.area_m2_est + ' м²'
+    );
+  });
+
+  var totalArea = lastPotholeDetections.reduce(function(s, d) { return s + d.area_m2_est; }, 0);
+  lines.push('\nОбщая площадь дефектов: ~' + Math.round(totalArea * 10) / 10 + ' м²');
+
+  closePotholeModal();
+  messageInputEl.value = lines.join('\n');
+  messageInputEl.focus();
+});

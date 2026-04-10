@@ -29,6 +29,16 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+# ── Детектор ям (YOLOv8n-seg) ─────────────────────────
+try:
+    from pothole_detector import PotholeDetector, register_pothole_routes
+    _pothole_detector = PotholeDetector()
+    register_pothole_routes(app, _pothole_detector)
+    print("✅ Детектор ям подключён.")
+except Exception as _e:
+    print(f"⚠️  Детектор ям не загружен: {_e}")
+    print("   Установите: pip install ultralytics opencv-python-headless")
+
 # ── Ollama клиент ─────────────────────────────────────
 OLLAMA_MODEL        = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
 OLLAMA_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "gemma3:4b")
@@ -463,15 +473,6 @@ def chat():
     messages = data.get("messages") or []
     if not messages:
         return jsonify({"error": "Нет сообщений"}), 400
-    
-    if messages and messages[-1].get("content", "").startswith("[IMAGE_ANALYSIS]"):
-        clean_text = messages[-1]["content"].replace("[IMAGE_ANALYSIS]", "").strip()
-
-        messages[-1]["content"] = (
-            "Это результат анализа изображения. "
-            "Ответь как обычный ассистент, НЕ создавай протокол и НЕ выделяй поручения.\n\n"
-            + clean_text
-        )
 
     chat_id          = data.get("chat_id")
     user_text        = messages[-1].get("content", "") if messages else ""
@@ -834,9 +835,11 @@ def transcribe():
 if __name__ == "__main__":
     start_ollama()
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "недоступна"
+    pothole_status = _pothole_detector.status["message"] if '_pothole_detector' in dir() else "не загружен"
     print(f"🚀 Сервер запущен.")
     print(f"🤖 Модель чата:      {OLLAMA_MODEL} (выгружается после каждого ответа)")
     print(f"👁️  Модель зрения:   {OLLAMA_VISION_MODEL} (выгружается после каждого запроса)")
+    print(f"🕳️  Детектор ям:     {pothole_status}")
     print(f"🎙️  Транскрипция:    faster-whisper {WHISPER_MODEL_PATH} (GPU по запросу, int8)")
     print(f"💾 GPU:              {gpu_name}")
     print(f"⛔ Для остановки нажмите Ctrl+C")
