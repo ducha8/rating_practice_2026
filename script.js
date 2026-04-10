@@ -238,7 +238,6 @@ document.getElementById('imageRecognizeBtn').addEventListener('click', openImage
 imageCloseBtn.addEventListener('click', closeImageModal);
 imageOverlay.addEventListener('click', function(e) { if (e.target === imageOverlay) closeImageModal(); });
 
-// Выбор файла изображения
 imageUploadBtn.addEventListener('click', function() {
   var fi = document.createElement('input');
   fi.type = 'file';
@@ -248,15 +247,12 @@ imageUploadBtn.addEventListener('click', function() {
     var file = fi.files[0];
     if (!file) return;
     pendingImageFile = file;
-
-    // Показываем превью
     var reader = new FileReader();
     reader.onload = function(e) {
       imagePreviewImg.src = e.target.result;
       imagePreview.style.display = 'block';
     };
     reader.readAsDataURL(file);
-
     imageMsg.className = 'inline-msg success';
     imageMsg.textContent = '✅ Файл выбран: ' + file.name + ' (' + Math.round(file.size / 1024) + ' КБ)';
     imageResult.style.display = 'none';
@@ -265,29 +261,24 @@ imageUploadBtn.addEventListener('click', function() {
   };
 });
 
-// Анализ изображения
 imageAnalyzeBtn.addEventListener('click', async function() {
   if (!pendingImageFile) { return; }
-
   var question = imageQuestionInp.value.trim();
   imageMsg.className = 'inline-msg success';
   imageMsg.textContent = '🔍 Анализирую изображение... Это может занять 15–60 секунд.';
   imageResult.style.display = 'none';
   imageAnalyzeBtn.disabled = true;
   imageUploadBtn.disabled = true;
-
   try {
     var fd = new FormData();
     fd.append('file', pendingImageFile);
     if (question) fd.append('question', question);
-
     var res = await fetch(API + '/api/recognize-image', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + getToken() },
       body: fd
     });
     var data = await res.json();
-
     if (res.ok && data.text) {
       imageMsg.className = 'inline-msg success';
       imageMsg.textContent = '✅ Готово! Модель: ' + (data.model || 'vision') + '.';
@@ -306,14 +297,12 @@ imageAnalyzeBtn.addEventListener('click', async function() {
   }
 });
 
-// Кнопка «Отправить в чат»
 document.getElementById('imageSendToChatBtn').addEventListener('click', function() {
   var text = imageTextResult.value.trim();
   if (!text) return;
   var filename = pendingImageFile ? pendingImageFile.name : 'изображение';
   var msgText = '🖼️ Анализ изображения «' + filename + '»:\n\n' + text;
   closeImageModal();
-  // Вставляем в поле ввода, чтобы пользователь мог отправить или отредактировать
   messageInputEl.value = msgText;
   messageInputEl.focus();
 });
@@ -712,7 +701,7 @@ document.getElementById('logoutBtn').addEventListener('click', function() { loca
 loadChats();
 
 // ══════════════════════════════════════════════════════
-//  POTHOLE DETECTION MODAL
+//  POTHOLE DETECTION MODAL (изображение)
 // ══════════════════════════════════════════════════════
 var potholeOverlay      = document.getElementById('potholeOverlay');
 var potholeMsg          = document.getElementById('potholeMsg');
@@ -733,12 +722,10 @@ var potholeSendBtn      = document.getElementById('potholeSendToChatBtn');
 var pendingPotholeFile    = null;
 var lastPotholeDetections = [];
 
-// Слайдер уверенности
 potholeConfSlider.addEventListener('input', function() {
   potholeConfLabel.textContent = potholeConfSlider.value + '%';
 });
 
-// Статус модели
 async function fetchPotholeModelStatus() {
   try {
     var res  = await apiFetch('/api/pothole-model-status');
@@ -757,7 +744,6 @@ async function fetchPotholeModelStatus() {
 }
 
 function openPotholeModal() {
-  // Сброс
   potholeMsg.className        = 'inline-msg';
   potholeMsg.textContent      = '';
   potholePreviewWrap.style.display = 'none';
@@ -771,7 +757,6 @@ function openPotholeModal() {
   potholeSendBtn.style.display = 'none';
   pendingPotholeFile           = null;
   lastPotholeDetections        = [];
-
   potholeOverlay.classList.add('visible');
   fetchPotholeModelStatus();
 }
@@ -786,7 +771,6 @@ potholeOverlay.addEventListener('click', function(e) {
   if (e.target === potholeOverlay) closePotholeModal();
 });
 
-// Выбор файла
 potholeUploadBtn.addEventListener('click', function() {
   var fi = document.createElement('input');
   fi.type   = 'file';
@@ -796,8 +780,6 @@ potholeUploadBtn.addEventListener('click', function() {
     var file = fi.files[0];
     if (!file) return;
     pendingPotholeFile = file;
-
-    // Превью оригинала
     var reader = new FileReader();
     reader.onload = function(e) {
       potholeOrigImg.src             = e.target.result;
@@ -808,19 +790,15 @@ potholeUploadBtn.addEventListener('click', function() {
       potholeSendBtn.style.display   = 'none';
     };
     reader.readAsDataURL(file);
-
     potholeMsg.className    = 'inline-msg success';
     potholeMsg.textContent  = '✅ Файл выбран: ' + file.name + ' (' + Math.round(file.size / 1024) + ' КБ)';
     potholeAnalyzeBtn.disabled = false;
   };
 });
 
-// Анализ
 potholeAnalyzeBtn.addEventListener('click', async function() {
   if (!pendingPotholeFile) return;
-
   var conf = parseInt(potholeConfSlider.value, 10) / 100;
-
   potholeMsg.className   = 'inline-msg success';
   potholeMsg.textContent = '🔍 Анализирую дорожное полотно... Это займёт 5–20 секунд.';
   potholeResultImg.style.display = 'none';
@@ -835,37 +813,29 @@ potholeAnalyzeBtn.addEventListener('click', async function() {
     var fd = new FormData();
     fd.append('file', pendingPotholeFile);
     fd.append('conf', conf.toString());
-
     var res = await fetch(API + '/api/detect-potholes', {
       method:  'POST',
       headers: { 'Authorization': 'Bearer ' + getToken() },
       body:    fd
     });
     var data = await res.json();
-
     if (res.ok) {
-      // Показываем результирующее изображение
       potholeResultImg.src           = 'data:image/jpeg;base64,' + data.annotated_image;
       potholeResultImg.style.display = 'block';
       potholeResultPH.style.display  = 'none';
-
       lastPotholeDetections = data.detections || [];
-
       if (data.count === 0) {
         potholeMsg.className   = 'inline-msg success';
         potholeMsg.textContent = '✅ Дефектов не обнаружено! (время: ' + data.processing_ms + ' мс)';
       } else {
         potholeMsg.className   = 'inline-msg success';
         potholeMsg.textContent = '⚠️ Найдено дефектов: ' + data.count + ' · время: ' + data.processing_ms + ' мс';
-
-        // Рендерим список
         renderPotholeList(data.detections);
         potholeList.style.display    = 'block';
         potholeSendBtn.style.display = 'inline-block';
       }
-
       if (!data.model_type || data.model_type === 'base') {
-        potholeMsg.textContent += ' · ⚠️ Базовая модель (обучите на ямах для точных результатов)';
+        potholeMsg.textContent += ' · ⚠️ Базовая модель';
       }
     } else {
       potholeMsg.className   = 'inline-msg error';
@@ -886,28 +856,22 @@ function renderPotholeList(detections) {
   detections.forEach(function(d) {
     var item = document.createElement('div');
     item.className = 'pothole-item';
-
     var num = document.createElement('div');
     num.className   = 'pothole-num';
     num.textContent = d.id;
-
     var info = document.createElement('div');
     info.className = 'pothole-info';
-
     var badge = document.createElement('span');
     badge.className = 'sev-badge sev-' + d.severity;
     badge.textContent = d.severity;
-
     var confEl = document.createElement('div');
     confEl.className   = 'pothole-conf';
     confEl.textContent = 'Уверенность: ' + Math.round(d.confidence * 100) + '%';
-
     var areaEl = document.createElement('div');
     areaEl.className   = 'pothole-area';
     areaEl.textContent = 'Площадь: ~' + d.area_m2_est + ' м² · ' +
                          Math.round(d.area_ratio * 100 * 10) / 10 + '% кадра' +
                          ' · центр (' + d.center.x + ', ' + d.center.y + ')';
-
     info.appendChild(badge);
     info.appendChild(confEl);
     info.appendChild(areaEl);
@@ -917,26 +881,314 @@ function renderPotholeList(detections) {
   });
 }
 
-// Отправить в чат
 potholeSendBtn.addEventListener('click', function() {
   if (!lastPotholeDetections.length) return;
   var filename = pendingPotholeFile ? pendingPotholeFile.name : 'изображение';
-
   var lines = ['🕳️ Анализ дорожного полотна «' + filename + '»:\n'];
   lines.push('Обнаружено дефектов: ' + lastPotholeDetections.length + '\n');
-
   lastPotholeDetections.forEach(function(d) {
-    lines.push(
-      '#' + d.id + ' ' + d.severity +
+    lines.push('#' + d.id + ' ' + d.severity +
       ' | уверенность: ' + Math.round(d.confidence * 100) + '%' +
-      ' | площадь: ~' + d.area_m2_est + ' м²'
-    );
+      ' | площадь: ~' + d.area_m2_est + ' м²');
   });
-
   var totalArea = lastPotholeDetections.reduce(function(s, d) { return s + d.area_m2_est; }, 0);
   lines.push('\nОбщая площадь дефектов: ~' + Math.round(totalArea * 10) / 10 + ' м²');
-
   closePotholeModal();
   messageInputEl.value = lines.join('\n');
   messageInputEl.focus();
 });
+
+// ══════════════════════════════════════════════════════
+//  POTHOLE VIDEO DETECTION MODAL
+// ══════════════════════════════════════════════════════
+(function () {
+
+  var overlay      = document.getElementById('videoOverlay');
+  var closeBtn     = document.getElementById('videoCloseBtn');
+  var uploadBtn    = document.getElementById('videoUploadBtn');
+  var analyzeBtn   = document.getElementById('videoAnalyzeBtn');
+  var cancelBtn    = document.getElementById('videoCancelBtn');
+  var sendBtn      = document.getElementById('videoSendToChatBtn');
+  var msgEl        = document.getElementById('videoMsg');
+  var progressWrap = document.getElementById('videoProgressWrap');
+  var progressBar  = document.getElementById('videoProgressBar');
+  var progressLbl  = document.getElementById('videoProgressLabel');
+  var streamWrap   = document.getElementById('videoStreamWrap');
+  var streamCanvas = document.getElementById('videoStreamCanvas');
+  var streamTs     = document.getElementById('videoStreamTs');
+  var timelineEl   = document.getElementById('videoTimeline');
+  var summaryEl    = document.getElementById('videoSummary');
+  var summaryText  = document.getElementById('videoSummaryText');
+  var confSlider   = document.getElementById('videoConf');
+  var confLabel    = document.getElementById('videoConfLabel');
+  var stepSlider   = document.getElementById('videoStep');
+  var stepLabel    = document.getElementById('videoStepLabel');
+
+  var pendingFile  = null;
+  var activeXHR    = null;
+  var videoEvents  = [];
+  var videoSummary = null;
+
+  // ── Открыть / закрыть ────────────────────────────
+  document.getElementById('potholeVideoBtn').addEventListener('click', openModal);
+  closeBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+
+  function openModal() { resetUI(); overlay.classList.add('visible'); }
+  function closeModal() { cancelStream(); overlay.classList.remove('visible'); }
+
+  // ── Слайдеры ─────────────────────────────────────
+  confSlider.addEventListener('input', function() { confLabel.textContent = confSlider.value + '%'; });
+  stepSlider.addEventListener('input', function() { stepLabel.textContent = stepSlider.value + ' кадр.'; });
+
+  // ── Выбор файла ───────────────────────────────────
+  uploadBtn.addEventListener('click', function() {
+    var fi = document.createElement('input');
+    fi.type   = 'file';
+    fi.accept = 'video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm,.mp4,.avi,.mov,.mkv,.webm,.m4v';
+    fi.click();
+    fi.onchange = function() {
+      var f = fi.files[0];
+      if (!f) return;
+      pendingFile = f;
+      setMsg('success', '✅ Файл: ' + f.name + ' (' + (f.size / 1024 / 1024).toFixed(1) + ' МБ)');
+      analyzeBtn.disabled = false;
+      resetResults();
+    };
+  });
+
+  // ── Анализ ────────────────────────────────────────
+  analyzeBtn.addEventListener('click', startAnalysis);
+  cancelBtn.addEventListener('click', cancelStream);
+
+  function startAnalysis() {
+    if (!pendingFile) return;
+    resetResults();
+
+    var conf = parseInt(confSlider.value, 10) / 100;
+    var step = parseInt(stepSlider.value, 10);
+
+    setMsg('success', '🔍 Загружаю видео на сервер...');
+    analyzeBtn.disabled     = true;
+    uploadBtn.disabled      = true;
+    cancelBtn.style.display = 'inline-block';
+    progressWrap.style.display = 'flex';
+    streamWrap.style.display   = 'flex';
+
+    var fd = new FormData();
+    fd.append('file', pendingFile);
+    fd.append('conf', conf.toString());
+    fd.append('frame_step', step.toString());
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/api/detect-potholes-video');
+    xhr.setRequestHeader('Authorization', 'Bearer ' + getToken());
+
+    var buffer = '';
+    xhr.onprogress = function() {
+      var newData = xhr.responseText.slice(buffer.length);
+      buffer = xhr.responseText;
+      newData.split('\n').forEach(function(line) {
+        line = line.trim();
+        if (line.startsWith('data:')) {
+          try { handleEvent(JSON.parse(line.slice(5).trim())); } catch (e) {}
+        }
+      });
+    };
+    xhr.onload = xhr.onerror = finishUI;
+
+    activeXHR = xhr;
+    xhr.send(fd);
+  }
+
+  function cancelStream() {
+    if (activeXHR) { try { activeXHR.abort(); } catch(e) {} activeXHR = null; }
+    finishUI();
+    setMsg('', '⛔ Анализ отменён.');
+  }
+
+  // ── Обработка событий ─────────────────────────────
+  function handleEvent(ev) {
+    switch (ev.type) {
+      case 'start':
+        setMsg('success', '▶️ Видео ' + fmtDur(ev.duration) + ' · ' + ev.fps + ' fps · ' + ev.total_frames + ' кадров');
+        break;
+
+      case 'frame':
+        renderFrame(ev.image, ev.ts_label, ev.count);
+        videoEvents.push(ev);
+        appendTimelineItem(ev);
+        break;
+
+      case 'progress':
+        setProgress(ev.pct, 'Анализирую... ' + ev.pct + '%');
+        break;
+
+      case 'done':
+        videoSummary = ev.summary;
+        renderSummary(ev.summary);
+        finishUI();
+        setMsg('success', '✅ Готово! Событий с ямами: ' + ev.summary.events_count);
+        if (ev.summary.events_count > 0) sendBtn.style.display = 'inline-block';
+        break;
+
+      case 'error':
+        setMsg('error', '❌ ' + ev.message);
+        finishUI();
+        break;
+    }
+  }
+
+  // ── Рендер кадра ─────────────────────────────────
+  var _img = new Image();
+  function renderFrame(b64, tsLabel, count) {
+    _img.onload = function() {
+      var ctx = streamCanvas.getContext('2d');
+      streamCanvas.width  = _img.naturalWidth  || 640;
+      streamCanvas.height = _img.naturalHeight || 360;
+      ctx.drawImage(_img, 0, 0);
+    };
+    _img.src = 'data:image/jpeg;base64,' + b64;
+    streamTs.textContent = tsLabel + ' · ям в кадре: ' + count;
+  }
+
+  // ── Тайм-лайн ────────────────────────────────────
+  function appendTimelineItem(ev) {
+    // Скрываем заглушку
+    var ph = document.getElementById('videoTimelinePH');
+    if (ph) ph.style.display = 'none';
+
+    var item = document.createElement('div');
+    item.className = 'vtl-item';
+
+    var ts = document.createElement('div');
+    ts.className   = 'vtl-ts';
+    ts.textContent = ev.ts_label;
+
+    var cnt = document.createElement('div');
+    cnt.className   = 'vtl-cnt';
+    cnt.textContent = ev.count + ' ям';
+
+    var sevs = document.createElement('div');
+    sevs.className = 'vtl-sevs';
+    ev.detections.forEach(function(d) {
+      var b = document.createElement('span');
+      b.className   = 'sev-badge sev-' + d.severity;
+      b.textContent = d.severity + ' ' + Math.round(d.confidence * 100) + '%';
+      sevs.appendChild(b);
+    });
+
+    item.appendChild(ts);
+    item.appendChild(cnt);
+    item.appendChild(sevs);
+    timelineEl.appendChild(item);
+    timelineEl.scrollTop = timelineEl.scrollHeight;
+    timelineEl.style.display = 'flex';
+  }
+
+  // ── Сводка ───────────────────────────────────────
+  function renderSummary(s) {
+    var lines = [
+      '📹 Длительность: ' + fmtDur(s.duration_s),
+      '🔍 Проанализировано кадров: ' + s.total_frames_analyzed,
+      '🕳️ Всего обнаружений: ' + s.total_detections,
+      '📍 Временных меток с ямами: ' + s.events_count,
+      '',
+      '─── ХРОНОЛОГИЯ ───',
+    ];
+    s.events.forEach(function(e) {
+      var sevs = e.detections.map(function(d) {
+        return d.severity + ' (' + Math.round(d.confidence * 100) + '%)';
+      }).join(', ');
+      lines.push(e.ts_label + '  │  ям: ' + e.count + '  │  ' + sevs);
+    });
+    summaryText.value = lines.join('\n');
+    summaryEl.style.display = 'block';
+  }
+
+  // ── Отправить в чат ───────────────────────────────
+  sendBtn.addEventListener('click', function() {
+    if (!videoSummary) return;
+    var s  = videoSummary;
+    var fn = pendingFile ? pendingFile.name : 'видео';
+    var lines = [
+      '🎥 Анализ дорожного полотна — «' + fn + '»',
+      'Длительность: ' + fmtDur(s.duration_s),
+      'Проанализировано кадров: ' + s.total_frames_analyzed,
+      'Всего обнаружений ям: ' + s.total_detections,
+      'Временных меток с дефектами: ' + s.events_count,
+      '',
+    ];
+    if (s.events.length) {
+      lines.push('ХРОНОЛОГИЯ ДЕФЕКТОВ:');
+      s.events.forEach(function(e) {
+        var sevs = e.detections.map(function(d) {
+          return d.severity + ' ' + Math.round(d.confidence * 100) + '%';
+        }).join(', ');
+        lines.push(e.ts_label + ' — ' + e.count + ' ям: ' + sevs);
+      });
+    }
+    closeModal();
+    messageInputEl.value = lines.join('\n');
+    messageInputEl.focus();
+  });
+
+  // ── Скачать отчёт ─────────────────────────────────
+  document.getElementById('videoDownloadReportBtn').addEventListener('click', function() {
+    var t = summaryText.value;
+    if (!t) return;
+    var b = new Blob([t], { type: 'text/plain;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'pothole_video_report.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  // ── Утилиты ───────────────────────────────────────
+  function setMsg(type, text) {
+    msgEl.className   = type ? 'inline-msg ' + type : 'inline-msg';
+    msgEl.textContent = text;
+  }
+  function setProgress(pct, lbl) {
+    progressBar.style.width = pct + '%';
+    progressLbl.textContent = lbl;
+  }
+  function fmtDur(sec) {
+    var s = Math.round(sec);
+    var m = Math.floor(s / 60); s = s % 60;
+    var h = Math.floor(m / 60); m = m % 60;
+    return h ? (h + 'ч ' + m + 'м ' + s + 'с') : (m ? m + 'м ' + s + 'с' : s + 'с');
+  }
+  function finishUI() {
+    analyzeBtn.disabled     = false;
+    uploadBtn.disabled      = false;
+    cancelBtn.style.display = 'none';
+    setProgress(100, 'Готово');
+    activeXHR = null;
+  }
+  function resetResults() {
+    videoEvents  = [];
+    videoSummary = null;
+    timelineEl.innerHTML     = '';
+    timelineEl.style.display = 'none';
+    summaryEl.style.display  = 'none';
+    summaryText.value        = '';
+    streamWrap.style.display    = 'none';
+    progressWrap.style.display  = 'none';
+    setProgress(0, '');
+    sendBtn.style.display    = 'none';
+    cancelBtn.style.display  = 'none';
+    var ph = document.getElementById('videoTimelinePH');
+    if (ph) ph.style.display = 'flex';
+  }
+  function resetUI() {
+    pendingFile         = null;
+    analyzeBtn.disabled = true;
+    uploadBtn.disabled  = false;
+    msgEl.className     = 'inline-msg';
+    msgEl.textContent   = '';
+    resetResults();
+  }
+
+})();

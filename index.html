@@ -165,6 +165,7 @@
       <button class="nav-btn" id="audioToTextBtn"><span class="icon">🎙️</span> Аудио → Текст</button>
       <button class="nav-btn" id="imageRecognizeBtn"><span class="icon">🖼️</span> Распознать фото</button>
       <button class="nav-btn" id="potholeDetectBtn"><span class="icon">🕳️</span> Детекция ям</button>
+      <button class="nav-btn" id="potholeVideoBtn">🎥 Видеоанализ дорог</button>
       <button class="nav-btn" id="changePwBtn"><span class="icon">🔑</span> Сменить пароль</button>
       <button class="nav-btn danger" id="logoutBtn"><span class="icon">🚪</span> Выйти</button>
     </nav>
@@ -345,6 +346,91 @@ observer.observe(_imageResult, { attributes: true, attributeFilter: ['style'] })
       <button class="btn-primary" id="potholeUploadBtn">📎 Выбрать фото</button>
       <button class="btn-primary" id="potholeAnalyzeBtn" disabled>🔍 Анализировать</button>
     </div>
+  </div>
+</div>
+
+<!-- ─── МОДАЛ ВИДЕОАНАЛИЗА (вставить в конец body) ─── -->
+<div class="modal-overlay" id="videoOverlay">
+  <div class="modal-box" style="max-width:1040px;width:92vw;max-height:90vh;overflow-y:auto;">
+ 
+    <!-- Заголовок -->
+    <div class="vm-header">
+      <div>
+        <div class="vm-title">🎥 Видеоанализ дорожного полотна</div>
+        <div class="vm-sub">YOLOv8-seg · покадровый стрим · хронология дефектов</div>
+      </div>
+      <button class="vm-close-btn" id="videoCloseBtn">✕</button>
+    </div>
+ 
+    <!-- Статус/сообщения -->
+    <div class="inline-msg" id="videoMsg"></div>
+ 
+    <!-- Настройки -->
+    <div class="vm-settings">
+      <div class="vm-setting-row">
+        <label class="vm-setting-label">Порог уверенности</label>
+        <input type="range" id="videoConf" min="10" max="90" value="25" step="5" class="vm-slider">
+        <span class="vm-slider-val" id="videoConfLabel">25%</span>
+      </div>
+      <div class="vm-setting-row">
+        <label class="vm-setting-label">Шаг кадра</label>
+        <input type="range" id="videoStep" min="1" max="60" value="15" step="1" class="vm-slider">
+        <span class="vm-slider-val" id="videoStepLabel">15 кадр.</span>
+      </div>
+      <div class="vm-setting-hint">
+        Шаг 15 при 30 fps ≈ анализ раз в 0.5 сек · меньше шаг = медленнее, но точнее
+      </div>
+    </div>
+ 
+    <!-- Кнопки -->
+    <div class="vm-actions">
+      <button class="fill-btn" id="videoUploadBtn">📂 Выбрать видео</button>
+      <button class="send-btn" id="videoAnalyzeBtn" disabled>▶ Анализировать</button>
+      <button class="action-btn" id="videoCancelBtn" style="display:none;">⛔ Отмена</button>
+    </div>
+ 
+    <!-- Прогресс -->
+    <div class="vm-progress-wrap" id="videoProgressWrap" style="display:none;">
+      <div class="vm-progress-bar" id="videoProgressBar" style="width:0%"></div>
+      <div class="vm-progress-label" id="videoProgressLabel"></div>
+    </div>
+ 
+    <!-- Тело: стрим + тайм-лайн -->
+    <div class="vm-body">
+ 
+      <!-- Живой кадр -->
+      <div class="vm-stream-col">
+        <div class="vm-col-title">Текущий кадр</div>
+        <div class="vm-stream-wrap" id="videoStreamWrap" style="display:none;">
+          <canvas id="videoStreamCanvas"></canvas>
+          <div class="vm-stream-ts" id="videoStreamTs"></div>
+        </div>
+        <div class="vm-stream-ph" id="videoStreamPH">
+          Здесь появятся кадры с обнаруженными ямами
+        </div>
+      </div>
+ 
+      <!-- Тайм-лайн -->
+      <div class="vm-timeline-col">
+        <div class="vm-col-title">Хронология дефектов</div>
+        <div class="vm-timeline" id="videoTimeline" style="display:none;"></div>
+        <div class="vm-timeline-ph" id="videoTimelinePH">
+          События появятся по мере обработки видео
+        </div>
+      </div>
+ 
+    </div>
+ 
+    <!-- Итоговая сводка -->
+    <div class="vm-summary" id="videoSummary" style="display:none;">
+      <div class="vm-col-title">Итоговая сводка</div>
+      <textarea class="vm-summary-text" id="videoSummaryText" readonly rows="9"></textarea>
+      <div class="vm-summary-actions">
+        <button class="fill-btn" id="videoDownloadReportBtn">⬇ Скачать отчёт</button>
+        <button class="send-btn" id="videoSendToChatBtn" style="display:none;">💬 Отправить в чат</button>
+      </div>
+    </div>
+ 
   </div>
 </div>
 
