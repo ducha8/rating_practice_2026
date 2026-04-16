@@ -29,7 +29,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ── Детектор ям (YOLOv8n-seg) ─────────────────────────
+# ── Детектор ям ────────────────────────────────────────
 try:
     from pothole_detector import PotholeDetector, register_pothole_routes
     _pothole_detector = PotholeDetector()
@@ -37,10 +37,21 @@ try:
     print("✅ Детектор ям подключён.")
 except Exception as _e:
     print(f"⚠️  Детектор ям не загружен: {_e}")
-    print("   Установите: pip install ultralytics opencv-python-headless")
+    _pothole_detector = None
 
-# ── Ollama клиент ─────────────────────────────────────
-OLLAMA_MODEL        = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+# ── Детектор мусора ────────────────────────────────────
+try:
+    from trash_detector import TrashDetector, register_trash_routes
+    _trash_detector = TrashDetector()
+    register_trash_routes(app, _trash_detector)
+    print("✅ Детектор мусора подключён.")
+except Exception as _e:
+    print(f"⚠️  Детектор мусора не загружен: {_e}")
+    print("   Установите: pip install ultralytics opencv-python-headless")
+    _trash_detector = None
+
+# ── Ollama клиент ──────────────────────────────────────
+OLLAMA_MODEL        = os.environ.get("OLLAMA_MODEL",        "qwen3:4b")
 OLLAMA_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "gemma3:4b")
 WHISPER_MODEL_PATH  = "small"
 
@@ -53,7 +64,7 @@ whisper_model = None
 
 
 # ══════════════════════════════════════════════════════
-#  OLLAMA — запуск / остановка / выгрузка модели
+#  OLLAMA — запуск / остановка / выгрузка
 # ══════════════════════════════════════════════════════
 
 def start_ollama():
@@ -85,7 +96,6 @@ def start_ollama():
 
 
 def unload_ollama_model(model_name=None):
-    """Выгружает указанную модель (или основную чат-модель) из VRAM"""
     target = model_name or OLLAMA_MODEL
     try:
         import requests
@@ -101,7 +111,7 @@ def unload_ollama_model(model_name=None):
 
 def stop_ollama():
     try:
-        subprocess.run(["ollama", "stop", OLLAMA_MODEL], timeout=5, capture_output=True)
+        subprocess.run(["ollama", "stop", OLLAMA_MODEL],        timeout=5, capture_output=True)
         subprocess.run(["ollama", "stop", OLLAMA_VISION_MODEL], timeout=5, capture_output=True)
         subprocess.run(["taskkill", "/F", "/IM", "ollama.exe"], timeout=5, capture_output=True)
         print("✅ Ollama остановлена.")
@@ -112,14 +122,10 @@ atexit.register(stop_ollama)
 
 
 # ══════════════════════════════════════════════════════
-#  WHISPER — оптимизировано под RTX 3050 4 ГБ
+#  WHISPER — загрузка/выгрузка по запросу
 # ══════════════════════════════════════════════════════
 
-whisper_model = None
-
-
 def load_whisper():
-    """Загружает Whisper с настройками для 4 ГБ VRAM"""
     global whisper_model
     if whisper_model is not None:
         print("✅ Whisper уже загружен.")
@@ -136,10 +142,10 @@ def load_whisper():
     torch.cuda.synchronize()
 
     vram_free = torch.cuda.mem_get_info()[0] / (1024 ** 3)
-    print(f"💾 Свободно VRAM перед загрузкой: {vram_free:.1f} ГБ")
+    print(f"💾 Свободно VRAM: {vram_free:.1f} ГБ")
 
     try:
-        print("⏳ Загружаю модель small (int8_float16)...")
+        print("⏳ Загружаю Whisper small (int8_float16)...")
         whisper_model = WhisperModel(
             model_size_or_path="small",
             device="cuda",
@@ -148,12 +154,7 @@ def load_whisper():
             cpu_threads=4,
             num_workers=2
         )
-        print("✅ small успешно загружена на GPU")
-
-        torch.cuda.synchronize()
-        used = (torch.cuda.mem_get_info()[1] - torch.cuda.mem_get_info()[0]) / (1024 ** 3)
-        print(f"📊 VRAM используется: ~{used:.1f} ГБ")
-
+        print("✅ Whisper загружен на GPU.")
     except Exception as e:
         print(f"❌ Ошибка загрузки Whisper: {e}")
         unload_whisper()
@@ -161,14 +162,11 @@ def load_whisper():
 
 
 def unload_whisper():
-    """Безопасная выгрузка"""
     global whisper_model
     if whisper_model is not None:
         print("🗑️  Выгружаю Whisper из VRAM...")
-        try:
-            del whisper_model
-        except:
-            pass
+        try: del whisper_model
+        except: pass
         whisper_model = None
         gc.collect()
         torch.cuda.empty_cache()
@@ -541,108 +539,62 @@ def chat():
 
 
 # ══════════════════════════════════════════════════════
-#  IMAGE RECOGNITION  (gemma3:4b — vision)
+#  IMAGE RECOGNITION (gemma3:4b vision)
 # ══════════════════════════════════════════════════════
 
 @app.route("/api/recognize-image", methods=["POST"])
 @require_auth
 def recognize_image():
-    """
-    Принимает изображение (multipart/form-data, поле 'file') и
-    необязательный вопрос (поле 'question').
-    Возвращает {"text": "...", "model": "gemma3:4b"}.
-    """
     if "file" not in request.files:
         return jsonify({"error": "Файл не передан"}), 400
-
     file = request.files["file"]
     if not file.filename:
         return jsonify({"error": "Пустое имя файла"}), 400
 
-    # Проверяем тип файла
     allowed_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed_exts:
-        return jsonify({"error": f"Неподдерживаемый тип файла. Разрешены: {', '.join(allowed_exts)}"}), 400
+        return jsonify({"error": f"Разрешены: {', '.join(allowed_exts)}"}), 400
 
     question = (request.form.get("question") or "").strip()
     if not question:
         question = "Подробно опиши что изображено на этой картинке. Укажи все важные детали: объекты, людей, текст, цвета, обстановку."
 
-    # Читаем файл и конвертируем в base64
     file_bytes = file.read()
-    if len(file_bytes) > 20 * 1024 * 1024:  # 20 MB лимит
+    if len(file_bytes) > 20 * 1024 * 1024:
         return jsonify({"error": "Файл слишком большой. Максимум 20 МБ."}), 400
 
     image_b64 = base64.b64encode(file_bytes).decode("utf-8")
+    print(f"🖼️  Распознаю: {file.filename} ({len(file_bytes)//1024} КБ), модель: {OLLAMA_VISION_MODEL}")
 
-    # Определяем MIME-тип
-    mime_map = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".png": "image/png", ".gif": "image/gif",
-        ".webp": "image/webp", ".bmp": "image/bmp"
-    }
-    mime_type = mime_map.get(ext, "image/jpeg")
-
-    print(f"🖼️  Распознаю изображение: {file.filename} ({len(file_bytes)//1024} КБ), модель: {OLLAMA_VISION_MODEL}")
-
-    # Выгружаем чат-модель и Whisper перед загрузкой vision модели
     unload_ollama_model(OLLAMA_MODEL)
     unload_whisper()
 
     try:
-        # Используем Ollama REST API напрямую (нативная поддержка изображений)
         import requests as req_lib
-
         payload = {
             "model": OLLAMA_VISION_MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": question,
-                    "images": [image_b64]
-                }
-            ],
+            "messages": [{"role": "user", "content": question, "images": [image_b64]}],
             "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 1024,
-            }
+            "options": {"temperature": 0.1, "num_predict": 1024},
         }
-
-        response = req_lib.post(
-            "http://localhost:11434/api/chat",
-            json=payload,
-            timeout=120
-        )
+        response = req_lib.post("http://localhost:11434/api/chat", json=payload, timeout=120)
         response.raise_for_status()
-        result = response.json()
-
-        reply = result.get("message", {}).get("content", "")
+        reply = response.json().get("message", {}).get("content", "")
         if not reply:
             return jsonify({"error": "Модель не вернула ответ"}), 500
-
-        # Убираем теги размышлений если есть
         reply = re.sub(r'<think>.*?</think>', '', reply, flags=re.DOTALL).strip()
-
         print(f"✅ Распознавание завершено: {len(reply)} символов")
-        return jsonify({
-            "text": reply,
-            "model": OLLAMA_VISION_MODEL,
-            "filename": file.filename
-        })
-
+        return jsonify({"text": reply, "model": OLLAMA_VISION_MODEL, "filename": file.filename})
     except req_lib.exceptions.Timeout:
-        return jsonify({"error": "Превышено время ожидания. Попробуйте изображение меньшего размера."}), 500
+        return jsonify({"error": "Превышено время ожидания."}), 500
     except req_lib.exceptions.ConnectionError:
-        return jsonify({"error": "Ollama недоступна. Убедитесь что сервер запущен."}), 500
+        return jsonify({"error": "Ollama недоступна."}), 500
     except Exception as e:
-        error_str = str(e)
-        if "model" in error_str.lower() and "not found" in error_str.lower():
-            return jsonify({
-                "error": f"Модель {OLLAMA_VISION_MODEL} не установлена. Выполните: ollama pull {OLLAMA_VISION_MODEL}"
-            }), 500
-        return jsonify({"error": f"Ошибка распознавания: {error_str}"}), 500
+        err = str(e)
+        if "model" in err.lower() and "not found" in err.lower():
+            return jsonify({"error": f"Модель {OLLAMA_VISION_MODEL} не установлена. Выполните: ollama pull {OLLAMA_VISION_MODEL}"}), 500
+        return jsonify({"error": f"Ошибка распознавания: {err}"}), 500
     finally:
         unload_ollama_model(OLLAMA_VISION_MODEL)
 
@@ -765,12 +717,11 @@ def delete_protocol(protocol_id):
 def transcribe():
     if "file" not in request.files:
         return jsonify({"error": "Файл не передан"}), 400
-    
     file = request.files["file"]
     if file.filename == "":
         return jsonify({"error": "Пустое имя файла"}), 400
 
-    suffix = os.path.splitext(file.filename)[1].lower() or ".mp3"
+    suffix   = os.path.splitext(file.filename)[1].lower() or ".mp3"
     tmp_path = None
     wav_path = None
 
@@ -782,68 +733,56 @@ def transcribe():
         wav_path = tmp_path + ".wav"
         subprocess.run(
             ["ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
-            capture_output=True,
-            check=True
+            capture_output=True, check=True
         )
 
         load_whisper()
-        print(f"🎙️  Транскрибирую: {file.filename} (модель: small)")
+        print(f"🎙️  Транскрибирую: {file.filename}")
 
         segments, info = whisper_model.transcribe(
             wav_path,
             language="ru",
-            beam_size=1,
-            best_of=1,
-            patience=1.0,
-            temperature=0.0,
+            beam_size=1, best_of=1, patience=1.0, temperature=0.0,
             vad_filter=True,
-            vad_parameters=dict(
-                min_silence_duration_ms=700,
-                max_speech_duration_s=25,
-                threshold=0.5
-            ),
+            vad_parameters=dict(min_silence_duration_ms=700, max_speech_duration_s=25, threshold=0.5),
             word_timestamps=False
         )
 
         text = " ".join(seg.text.strip() for seg in segments).strip()
-        print(f"✅ Готово: {len(text)} символов | Длительность: {info.duration:.1f} сек")
-
-        return jsonify({
-            "text": text,
-            "duration": round(info.duration, 1)
-        })
+        print(f"✅ Готово: {len(text)} символов | {info.duration:.1f} сек")
+        return jsonify({"text": text, "duration": round(info.duration, 1)})
 
     except Exception as e:
-        error_str = str(e).lower()
-        if any(x in error_str for x in ["out of memory", "cuda", "c10", "memory"]):
-            msg = "Недостаточно VRAM на видеокарте. Файл слишком большой для 4 ГБ. Попробуйте более короткий файл или разбейте его."
+        err = str(e).lower()
+        if any(x in err for x in ["out of memory", "cuda", "c10", "memory"]):
+            msg = "Недостаточно VRAM. Попробуйте более короткий файл."
         else:
             msg = f"Ошибка транскрипции: {str(e)}"
         return jsonify({"error": msg}), 500
-
     finally:
         unload_whisper()
         for path in [tmp_path, wav_path]:
             try:
-                if path and os.path.exists(path):
-                    os.unlink(path)
-            except:
-                pass
+                if path and os.path.exists(path): os.unlink(path)
+            except: pass
         torch.cuda.empty_cache()
         gc.collect()
 
+
 if __name__ == "__main__":
     start_ollama()
-    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "недоступна"
-    pothole_status = _pothole_detector.status["message"] if '_pothole_detector' in dir() else "не загружен"
+    gpu_name       = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "недоступна"
+    pothole_status = _pothole_detector.status["message"] if _pothole_detector else "не загружен"
+    trash_status   = _trash_detector.status["message"]   if _trash_detector   else "не загружен"
     print(f"🚀 Сервер запущен.")
-    print(f"🤖 Модель чата:      {OLLAMA_MODEL} (выгружается после каждого ответа)")
-    print(f"👁️  Модель зрения:   {OLLAMA_VISION_MODEL} (выгружается после каждого запроса)")
-    print(f"🕳️  Детектор ям:     {pothole_status}")
-    print(f"🎙️  Транскрипция:    faster-whisper {WHISPER_MODEL_PATH} (GPU по запросу, int8)")
-    print(f"💾 GPU:              {gpu_name}")
-    print(f"⛔ Для остановки нажмите Ctrl+C")
+    print(f"🤖 Чат:          {OLLAMA_MODEL}")
+    print(f"👁️  Зрение:      {OLLAMA_VISION_MODEL}")
+    print(f"🕳️  Ямы:         {pothole_status}")
+    print(f"🗑️  Мусор:       {trash_status}")
+    print(f"🎙️  Whisper:     small (GPU по запросу)")
+    print(f"💾 GPU:          {gpu_name}")
+    print(f"⛔ Ctrl+C для остановки")
     app.run(host="0.0.0.0", port=5000, debug=False)
-    
-    # Локальный доступ:  http://localhost:5000
-    # Сеть / телефон:    http://10.43.42.24:5000
+
+    # http://localhost:5000
+    # http://10.43.42.24:5000

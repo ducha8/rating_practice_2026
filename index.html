@@ -15,39 +15,26 @@
       --sidebar-w: 260px;
     }
     html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; overflow: hidden; }
-
-    body::after {
-      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      background:
-        radial-gradient(ellipse 60% 50% at 10% 20%, rgba(59,130,246,0.05) 0%, transparent 70%),
-        radial-gradient(ellipse 50% 60% at 90% 80%, rgba(99,102,241,0.04) 0%, transparent 70%);
-    }
-
+    body::after { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(ellipse 60% 50% at 10% 20%, rgba(59,130,246,0.05) 0%, transparent 70%),
+                  radial-gradient(ellipse 50% 60% at 90% 80%, rgba(99,102,241,0.04) 0%, transparent 70%); }
     .app { position: relative; z-index: 1; display: flex; height: 100vh; }
-    .sidebar {
-      width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface);
-      border-right: 1px solid var(--border); display: flex; flex-direction: column;
-      padding: 20px 14px; gap: 18px; overflow: hidden;
-    }
+
+    /* ── Sidebar ── */
+    .sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px 14px; gap: 18px; overflow: hidden; }
     .sidebar-header { display: flex; flex-direction: column; gap: 4px; }
     .greeting { font-family: 'Unbounded', sans-serif; font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .current-chat-label { font-size: 10px; color: var(--muted); line-height: 1.5; }
     .current-chat-label span { color: var(--text); font-weight: 600; }
     .divider { height: 1px; background: var(--border); flex-shrink: 0; }
     .nav-menu { display: flex; flex-direction: column; gap: 4px; }
-    .nav-btn {
-      display: flex; align-items: center; gap: 8px; background: none; border: none;
-      color: var(--muted); padding: 7px 10px; border-radius: 8px; cursor: pointer;
-      font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: left;
-      transition: background 0.15s, color 0.15s; width: 100%;
-    }
+    .nav-btn { display: flex; align-items: center; gap: 8px; background: none; border: none; color: var(--muted); padding: 7px 10px; border-radius: 8px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: left; transition: background 0.15s, color 0.15s; width: 100%; }
     .nav-btn:hover { background: var(--surface3); color: var(--text); }
     .nav-btn.danger:hover { background: rgba(239,68,68,0.12); color: var(--danger); }
     .nav-btn .icon { font-size: 13px; }
     .chat-list-header { font-family: 'Unbounded', sans-serif; font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding: 0 4px; flex-shrink: 0; }
     .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; padding-right: 2px; }
     .chat-list::-webkit-scrollbar { width: 3px; }
-    .chat-list::-webkit-scrollbar-track { background: transparent; }
     .chat-list::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
     .chat-item { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 11px; border: 1px solid transparent; transition: all 0.15s; user-select: none; }
     .chat-item:hover { background: var(--surface2); color: var(--text); }
@@ -61,7 +48,7 @@
     .ctx-item.danger { color: var(--danger); }
     .ctx-item.danger:hover { background: rgba(239,68,68,0.12); }
 
-    /* ── MODALS ── */
+    /* ── Modals ── */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
     .modal-overlay.visible { opacity: 1; pointer-events: all; }
     .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px; min-width: 300px; max-width: 520px; width: 100%; transform: translateY(8px); transition: transform 0.2s; }
@@ -74,7 +61,7 @@
     .form-input { background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 10px 13px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; width: 100%; }
     .form-input::placeholder { color: var(--muted); }
     .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
-    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
     .btn-cancel { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.15s; }
     .btn-cancel:hover { color: var(--text); background: var(--surface3); }
     .btn-primary { padding: 8px 16px; border-radius: 8px; border: none; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
@@ -86,17 +73,14 @@
     .inline-msg.error   { display: block; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; }
     .inline-msg.success { display: block; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: #86efac; }
 
-    /* ── IMAGE MODAL ── */
-    .image-preview-box {
-      border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-      background: var(--surface2); max-height: 220px; display: flex; align-items: center; justify-content: center;
-    }
+    /* ── Image preview ── */
+    .image-preview-box { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface2); max-height: 220px; display: flex; align-items: center; justify-content: center; }
     .image-preview-box img { max-width: 100%; max-height: 220px; object-fit: contain; display: block; }
     .image-result-area { display: flex; flex-direction: column; gap: 8px; }
     .image-result-label { font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
     #imageTextResult { min-height: 130px; resize: vertical; font-size: 12px; line-height: 1.6; }
 
-    /* ── PROTOCOLS ── */
+    /* ── Protocols ── */
     .protocols-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
     .protocols-list::-webkit-scrollbar { width: 3px; }
     .protocols-list::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
@@ -111,7 +95,28 @@
     .protocol-delete-btn:hover { background: rgba(239,68,68,0.1); }
     .protocols-empty { text-align: center; color: var(--muted); font-size: 12px; padding: 24px 0; line-height: 1.8; }
 
-    /* ── MAIN ── */
+    /* ── Detection items ── */
+    .detect-item { display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; font-size:11px; }
+    .detect-num { width:22px; height:22px; border-radius:50%; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px; flex-shrink:0; }
+    .detect-info { flex:1; display:flex; flex-direction:column; gap:3px; }
+    .detect-conf { font-size:10px; color:var(--muted); }
+    .detect-area { font-size:10px; color:var(--muted); }
+
+    /* ── Severity badges ── */
+    .sev-badge { display:inline-block; padding:2px 8px; border-radius:5px; font-size:10px; font-weight:700; letter-spacing:0.05em; }
+    .sev-Микро       { background:rgba(34,197,94,0.2);  color:#86efac; }
+    .sev-Малая       { background:rgba(234,179,8,0.2);  color:#fde68a; }
+    .sev-Средняя     { background:rgba(249,115,22,0.2); color:#fdba74; }
+    .sev-Крупная     { background:rgba(239,68,68,0.25); color:#fca5a5; }
+    .sev-Критическая { background:rgba(220,38,38,0.35); color:#ef4444; }
+    /* Pollution levels for trash */
+    .poll-Чисто          { background:rgba(34,197,94,0.2);  color:#86efac; }
+    .poll-Незначительное { background:rgba(234,179,8,0.2);  color:#fde68a; }
+    .poll-Умеренное      { background:rgba(249,115,22,0.2); color:#fdba74; }
+    .poll-Высокое        { background:rgba(239,68,68,0.25); color:#fca5a5; }
+    .poll-Критическое    { background:rgba(220,38,38,0.35); color:#ef4444; }
+
+    /* ── Main ── */
     .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
     .topbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface); flex-shrink: 0; }
     .topbar-title { font-family: 'Unbounded', sans-serif; font-size: 15px; font-weight: 600; background: linear-gradient(135deg, #e2e8f0 30%, var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -120,7 +125,6 @@
     .fill-btn:hover { border-color: var(--accent); background: rgba(59,130,246,0.1); color: var(--accent); }
     .chat-window { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 12px; }
     .chat-window::-webkit-scrollbar { width: 4px; }
-    .chat-window::-webkit-scrollbar-track { background: transparent; }
     .chat-window::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
     .message { display: flex; flex-direction: column; max-width: 72%; animation: msgIn 0.2s ease; }
     @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -136,7 +140,6 @@
     .typing-dot:nth-child(2) { animation-delay: 0.2s; }
     .typing-dot:nth-child(3) { animation-delay: 0.4s; }
     @keyframes bounce { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-5px); opacity: 1; } }
-    .typing-indicator:not(.visible) .typing-dot { animation: none; }
     .input-area { padding: 14px 24px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
     .msg-input { flex: 1; min-width: 120px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.15s; }
     .msg-input::placeholder { color: var(--muted); }
@@ -150,6 +153,44 @@
     .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
     .spinner { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 5px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ══ VIDEO MODAL ══ */
+    .video-modal-box { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px 28px; width:92vw; max-width:1040px; max-height:88vh; overflow-y:auto; display:flex; flex-direction:column; gap:16px; transform:translateY(12px); transition:transform 0.2s; scrollbar-width:thin; scrollbar-color:var(--surface3) transparent; }
+    .modal-overlay.visible .video-modal-box { transform:translateY(0); }
+    .video-modal-box::-webkit-scrollbar { width:3px; }
+    .video-modal-box::-webkit-scrollbar-thumb { background:var(--surface3); }
+    .vm-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .vm-title { font-family:'Unbounded',sans-serif; font-size:14px; font-weight:600; color:var(--text); }
+    .vm-sub { font-size:10px; color:var(--muted); margin-top:3px; }
+    .vm-close-btn { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; padding:0 4px; line-height:1; flex-shrink:0; transition:color 0.15s; }
+    .vm-close-btn:hover { color:var(--danger); }
+    .vm-settings { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px 16px; display:flex; flex-direction:column; gap:8px; }
+    .vm-setting-row { display:flex; align-items:center; gap:10px; }
+    .vm-setting-label { font-size:11px; color:var(--muted); white-space:nowrap; min-width:130px; }
+    .vm-slider { flex:1; accent-color:var(--accent); cursor:pointer; }
+    .vm-slider-val { font-size:11px; font-weight:600; color:var(--accent); min-width:60px; text-align:right; }
+    .vm-setting-hint { font-size:9px; color:var(--muted); padding-top:2px; }
+    .vm-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .vm-progress-wrap { position:relative; height:26px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .vm-progress-bar { position:absolute; inset:0; height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width 0.4s ease; border-radius:8px; }
+    .vm-progress-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; color:var(--text); z-index:1; }
+    .vm-body { display:grid; grid-template-columns:1fr 1fr; gap:16px; min-height:220px; }
+    .vm-col-title { font-family:'Unbounded',sans-serif; font-size:9px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+    .vm-stream-col,.vm-timeline-col { display:flex; flex-direction:column; }
+    .vm-stream-wrap { display:flex; flex-direction:column; gap:6px; }
+    .vm-stream-wrap canvas { width:100%; border-radius:8px; border:1px solid var(--border); display:block; }
+    .vm-stream-ts { font-size:10px; color:var(--accent); font-weight:600; text-align:center; }
+    .vm-stream-ph,.vm-timeline-ph { flex:1; display:flex; align-items:center; justify-content:center; background:var(--surface2); border:1px dashed var(--border); border-radius:8px; color:var(--muted); font-size:11px; min-height:140px; text-align:center; padding:16px; }
+    .vm-timeline { flex:1; display:flex; flex-direction:column; gap:4px; max-height:280px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--surface3) transparent; }
+    .vm-timeline::-webkit-scrollbar { width:3px; }
+    .vm-timeline::-webkit-scrollbar-thumb { background:var(--surface3); }
+    .vtl-item { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; animation:msgIn 0.15s ease; }
+    .vtl-ts { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:var(--accent); white-space:nowrap; min-width:72px; }
+    .vtl-cnt { font-size:10px; color:var(--text); white-space:nowrap; }
+    .vtl-sevs { display:flex; flex-wrap:wrap; gap:4px; flex:1; }
+    .vm-summary { display:flex; flex-direction:column; gap:8px; }
+    .vm-summary-text { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6; resize:vertical; width:100%; outline:none; }
+    .vm-summary-actions { display:flex; gap:8px; flex-wrap:wrap; }
   </style>
 </head>
 <body>
@@ -165,7 +206,9 @@
       <button class="nav-btn" id="audioToTextBtn"><span class="icon">🎙️</span> Аудио → Текст</button>
       <button class="nav-btn" id="imageRecognizeBtn"><span class="icon">🖼️</span> Распознать фото</button>
       <button class="nav-btn" id="potholeDetectBtn"><span class="icon">🕳️</span> Детекция ям</button>
-      <button class="nav-btn" id="potholeVideoBtn">🎥 Видеоанализ дорог</button>
+      <button class="nav-btn" id="potholeVideoBtn"><span class="icon">🎥</span> Видеоанализ дорог</button>
+      <button class="nav-btn" id="trashDetectBtn"><span class="icon">🗑️</span> Детекция мусора</button>
+      <button class="nav-btn" id="trashVideoBtn"><span class="icon">📹</span> Видео мусора</button>
       <button class="nav-btn" id="changePwBtn"><span class="icon">🔑</span> Сменить пароль</button>
       <button class="nav-btn danger" id="logoutBtn"><span class="icon">🚪</span> Выйти</button>
     </nav>
@@ -227,15 +270,13 @@
   </div>
 </div>
 
-<!-- PROTOCOLS LIST -->
+<!-- PROTOCOLS -->
 <div class="modal-overlay" id="protocolsOverlay">
   <div class="modal-box" style="max-width:560px;">
     <div class="modal-title">📋 Протоколы</div>
     <div class="modal-sub">Все созданные протоколы. Нажмите ⬇ чтобы скачать.</div>
     <div class="protocols-list" id="protocolsList"></div>
-    <div class="modal-actions">
-      <button class="btn-cancel" id="protocolsCloseBtn">Закрыть</button>
-    </div>
+    <div class="modal-actions"><button class="btn-cancel" id="protocolsCloseBtn">Закрыть</button></div>
   </div>
 </div>
 
@@ -243,10 +284,10 @@
 <div class="modal-overlay" id="audioOverlay">
   <div class="modal-box">
     <div class="modal-title">🎙️ Аудио → Текст</div>
-    <div class="modal-sub">Загрузите аудиофайл для распознавания речи. Поддерживаются mp3, wav, m4a, ogg.</div>
+    <div class="modal-sub">Загрузите аудиофайл. Поддерживаются mp3, wav, m4a, ogg.</div>
     <div id="audioMsg" class="inline-msg"></div>
     <div id="audioResult" style="display:none;">
-      <div class="form-label" style="margin-bottom:6px;">Результат распознавания:</div>
+      <div class="form-label" style="margin-bottom:6px;">Результат:</div>
       <textarea id="audioTextResult" class="form-input" style="min-height:120px;resize:vertical;" readonly></textarea>
     </div>
     <div class="modal-actions">
@@ -260,86 +301,49 @@
 <div class="modal-overlay" id="imageOverlay">
   <div class="modal-box" style="max-width:560px;">
     <div class="modal-title">🖼️ Распознавание изображений</div>
-    <div class="modal-sub">Загрузите фото или скриншот. Модель опишет содержимое, прочитает текст, ответит на вопрос. Поддерживаются JPG, PNG, WEBP, GIF, BMP. Макс. 20 МБ.</div>
-
+    <div class="modal-sub">JPG, PNG, WEBP, GIF, BMP. Макс. 20 МБ.</div>
     <div id="imageMsg" class="inline-msg"></div>
-
-    <!-- Превью -->
-    <div id="imagePreview" class="image-preview-box" style="display:none;">
-      <img id="imagePreviewImg" src="" alt="Превью">
-    </div>
-
-    <!-- Вопрос к изображению -->
+    <div id="imagePreview" class="image-preview-box" style="display:none;"><img id="imagePreviewImg" src="" alt="Превью"></div>
     <div class="form-group">
-      <label class="form-label">Вопрос к изображению (необязательно)</label>
-      <input class="form-input" id="imageQuestion" type="text"
-        placeholder="Например: Какой текст написан? Что за объект? Опиши детали.">
+      <label class="form-label">Вопрос (необязательно)</label>
+      <input class="form-input" id="imageQuestion" type="text" placeholder="Что изображено? Какой текст?">
     </div>
-
-    <!-- Результат -->
     <div id="imageResult" class="image-result-area" style="display:none;">
-      <div class="image-result-label">Результат анализа:</div>
+      <div class="image-result-label">Результат:</div>
       <textarea id="imageTextResult" class="form-input" readonly></textarea>
     </div>
-
     <div class="modal-actions">
       <button class="btn-cancel" id="imageCloseBtn">Закрыть</button>
-      <button class="btn-cancel" id="imageSendToChatBtn" style="display:none; color:var(--accent); border-color:var(--accent);">💬 В чат</button>
+      <button class="btn-cancel" id="imageSendToChatBtn" style="display:none;color:var(--accent);border-color:var(--accent);">💬 В чат</button>
       <button class="btn-primary" id="imageUploadBtn">📎 Выбрать фото</button>
       <button class="btn-primary" id="imageAnalyzeBtn" disabled>🔍 Анализировать</button>
     </div>
   </div>
 </div>
 
-<script>
-// Показываем кнопку «В чат» когда есть результат
-var _imageResult = document.getElementById('imageResult');
-var _imageSendBtn = document.getElementById('imageSendToChatBtn');
-var observer = new MutationObserver(function() {
-  _imageSendBtn.style.display = (_imageResult.style.display !== 'none') ? 'block' : 'none';
-});
-observer.observe(_imageResult, { attributes: true, attributeFilter: ['style'] });
-</script>
-
-<!-- POTHOLE DETECTION MODAL -->
+<!-- POTHOLE DETECTION -->
 <div class="modal-overlay" id="potholeOverlay">
   <div class="modal-box" style="max-width:680px;">
-    <div class="modal-title">🕳️ Детекция ям и дефектов дороги</div>
+    <div class="modal-title">🕳️ Детекция ям</div>
     <div class="modal-sub" id="potholeModelStatus">YOLOv8n-seg · Загрузка статуса...</div>
-
     <div id="potholeMsg" class="inline-msg"></div>
-
-    <!-- Превью до/после -->
     <div id="potholePreviewWrap" style="display:none;">
-      <div style="display:flex; gap:10px; align-items:flex-start;">
-        <div style="flex:1;">
-          <div class="form-label" style="margin-bottom:5px;">Оригинал</div>
-          <div class="image-preview-box"><img id="potholeOrigImg" src="" alt="Оригинал"></div>
-        </div>
-        <div style="flex:1;">
-          <div class="form-label" style="margin-bottom:5px;">Детекция</div>
-          <div class="image-preview-box"><img id="potholeResultImg" src="" alt="Результат" style="display:none;"></div>
+      <div style="display:flex;gap:10px;">
+        <div style="flex:1;"><div class="form-label" style="margin-bottom:5px;">Оригинал</div><div class="image-preview-box"><img id="potholeOrigImg" src="" alt=""></div></div>
+        <div style="flex:1;"><div class="form-label" style="margin-bottom:5px;">Детекция</div>
+          <div class="image-preview-box"><img id="potholeResultImg" src="" alt="" style="display:none;"></div>
           <div id="potholeResultPlaceholder" style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">Результат появится здесь</div>
         </div>
       </div>
     </div>
-
-    <!-- Слайдер уверенности -->
     <div class="form-group">
       <label class="form-label">Порог уверенности: <span id="confValueLabel">25%</span></label>
-      <input type="range" id="potholeConf" min="10" max="80" value="25" step="5"
-        style="width:100%;accent-color:var(--accent);cursor:pointer;">
-      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px;">
-        <span>10% — больше находок</span><span>80% — только явные</span>
-      </div>
+      <input type="range" id="potholeConf" min="10" max="80" value="25" step="5" style="width:100%;accent-color:var(--accent);cursor:pointer;">
     </div>
-
-    <!-- Список найденных ям -->
     <div id="potholeList" style="display:none;">
       <div class="form-label" style="margin-bottom:6px;">Найденные дефекты:</div>
-      <div id="potholeListItems" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;padding-right:4px;"></div>
+      <div id="potholeListItems" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;"></div>
     </div>
-
     <div class="modal-actions">
       <button class="btn-cancel" id="potholeCloseBtn">Закрыть</button>
       <button class="btn-cancel" id="potholeSendToChatBtn" style="display:none;color:var(--accent);border-color:var(--accent);">💬 В чат</button>
@@ -349,79 +353,69 @@ observer.observe(_imageResult, { attributes: true, attributeFilter: ['style'] })
   </div>
 </div>
 
-<!-- ─── МОДАЛ ВИДЕОАНАЛИЗА (вставить в конец body) ─── -->
-<div class="modal-overlay" id="videoOverlay">
-  <div class="modal-box" style="max-width:1040px;width:92vw;max-height:90vh;overflow-y:auto;">
- 
-    <!-- Заголовок -->
-    <div class="vm-header">
-      <div>
-        <div class="vm-title">🎥 Видеоанализ дорожного полотна</div>
-        <div class="vm-sub">YOLOv8-seg · покадровый стрим · хронология дефектов</div>
+<!-- TRASH DETECTION (фото) -->
+<div class="modal-overlay" id="trashOverlay">
+  <div class="modal-box" style="max-width:680px;">
+    <div class="modal-title">🗑️ Детекция мусора</div>
+    <div class="modal-sub" id="trashModelStatus">YOLOv8-seg · Загрузка статуса...</div>
+    <div id="trashMsg" class="inline-msg"></div>
+    <div id="trashPreviewWrap" style="display:none;">
+      <div style="display:flex;gap:10px;">
+        <div style="flex:1;"><div class="form-label" style="margin-bottom:5px;">Оригинал</div><div class="image-preview-box"><img id="trashOrigImg" src="" alt=""></div></div>
+        <div style="flex:1;"><div class="form-label" style="margin-bottom:5px;">Детекция</div>
+          <div class="image-preview-box"><img id="trashResultImg" src="" alt="" style="display:none;"></div>
+          <div id="trashResultPlaceholder" style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">Результат появится здесь</div>
+        </div>
       </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Порог уверенности: <span id="trashConfLabel">25%</span></label>
+      <input type="range" id="trashConf" min="10" max="80" value="25" step="5" style="width:100%;accent-color:var(--accent);cursor:pointer;">
+    </div>
+    <div id="trashList" style="display:none;">
+      <div class="form-label" style="margin-bottom:6px;">Найденный мусор:</div>
+      <div id="trashListItems" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="trashCloseBtn">Закрыть</button>
+      <button class="btn-cancel" id="trashSendToChatBtn" style="display:none;color:var(--accent);border-color:var(--accent);">💬 В чат</button>
+      <button class="btn-primary" id="trashUploadBtn">📎 Выбрать фото</button>
+      <button class="btn-primary" id="trashAnalyzeBtn" disabled>🔍 Анализировать</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIDEO POTHOLE -->
+<div class="modal-overlay" id="videoOverlay">
+  <div class="video-modal-box">
+    <div class="vm-header">
+      <div><div class="vm-title">🎥 Видеоанализ дорожного полотна</div><div class="vm-sub">YOLOv8-seg · покадровый стрим · хронология дефектов</div></div>
       <button class="vm-close-btn" id="videoCloseBtn">✕</button>
     </div>
- 
-    <!-- Статус/сообщения -->
     <div class="inline-msg" id="videoMsg"></div>
- 
-    <!-- Настройки -->
     <div class="vm-settings">
-      <div class="vm-setting-row">
-        <label class="vm-setting-label">Порог уверенности</label>
-        <input type="range" id="videoConf" min="10" max="90" value="25" step="5" class="vm-slider">
-        <span class="vm-slider-val" id="videoConfLabel">25%</span>
-      </div>
-      <div class="vm-setting-row">
-        <label class="vm-setting-label">Шаг кадра</label>
-        <input type="range" id="videoStep" min="1" max="60" value="15" step="1" class="vm-slider">
-        <span class="vm-slider-val" id="videoStepLabel">15 кадр.</span>
-      </div>
-      <div class="vm-setting-hint">
-        Шаг 15 при 30 fps ≈ анализ раз в 0.5 сек · меньше шаг = медленнее, но точнее
-      </div>
+      <div class="vm-setting-row"><label class="vm-setting-label">Порог уверенности</label><input type="range" id="videoConf" min="10" max="90" value="25" step="5" class="vm-slider"><span class="vm-slider-val" id="videoConfLabel">25%</span></div>
+      <div class="vm-setting-row"><label class="vm-setting-label">Шаг кадра</label><input type="range" id="videoStep" min="1" max="60" value="15" step="1" class="vm-slider"><span class="vm-slider-val" id="videoStepLabel">15 кадр.</span></div>
+      <div class="vm-setting-hint">Шаг 15 при 30 fps ≈ анализ раз в 0.5 сек</div>
     </div>
- 
-    <!-- Кнопки -->
     <div class="vm-actions">
       <button class="fill-btn" id="videoUploadBtn">📂 Выбрать видео</button>
       <button class="send-btn" id="videoAnalyzeBtn" disabled>▶ Анализировать</button>
       <button class="action-btn" id="videoCancelBtn" style="display:none;">⛔ Отмена</button>
     </div>
- 
-    <!-- Прогресс -->
-    <div class="vm-progress-wrap" id="videoProgressWrap" style="display:none;">
-      <div class="vm-progress-bar" id="videoProgressBar" style="width:0%"></div>
-      <div class="vm-progress-label" id="videoProgressLabel"></div>
-    </div>
- 
-    <!-- Тело: стрим + тайм-лайн -->
+    <div class="vm-progress-wrap" id="videoProgressWrap" style="display:none;"><div class="vm-progress-bar" id="videoProgressBar" style="width:0%"></div><div class="vm-progress-label" id="videoProgressLabel"></div></div>
     <div class="vm-body">
- 
-      <!-- Живой кадр -->
       <div class="vm-stream-col">
         <div class="vm-col-title">Текущий кадр</div>
-        <div class="vm-stream-wrap" id="videoStreamWrap" style="display:none;">
-          <canvas id="videoStreamCanvas"></canvas>
-          <div class="vm-stream-ts" id="videoStreamTs"></div>
-        </div>
-        <div class="vm-stream-ph" id="videoStreamPH">
-          Здесь появятся кадры с обнаруженными ямами
-        </div>
+        <div class="vm-stream-wrap" id="videoStreamWrap" style="display:none;"><canvas id="videoStreamCanvas"></canvas><div class="vm-stream-ts" id="videoStreamTs"></div></div>
+        <div class="vm-stream-ph" id="videoStreamPH">Здесь появятся кадры с обнаруженными ямами</div>
       </div>
- 
-      <!-- Тайм-лайн -->
       <div class="vm-timeline-col">
         <div class="vm-col-title">Хронология дефектов</div>
         <div class="vm-timeline" id="videoTimeline" style="display:none;"></div>
-        <div class="vm-timeline-ph" id="videoTimelinePH">
-          События появятся по мере обработки видео
-        </div>
+        <div class="vm-timeline-ph" id="videoTimelinePH">События появятся по мере обработки</div>
       </div>
- 
     </div>
- 
-    <!-- Итоговая сводка -->
     <div class="vm-summary" id="videoSummary" style="display:none;">
       <div class="vm-col-title">Итоговая сводка</div>
       <textarea class="vm-summary-text" id="videoSummaryText" readonly rows="9"></textarea>
@@ -430,36 +424,50 @@ observer.observe(_imageResult, { attributes: true, attributeFilter: ['style'] })
         <button class="send-btn" id="videoSendToChatBtn" style="display:none;">💬 Отправить в чат</button>
       </div>
     </div>
- 
   </div>
 </div>
 
-<style>
-/* Severity badges */
-.sev-badge {
-  display:inline-block; padding:2px 8px; border-radius:5px;
-  font-size:10px; font-weight:700; letter-spacing:0.05em;
-}
-.sev-Микро      { background:rgba(34,197,94,0.2);  color:#86efac; }
-.sev-Малая      { background:rgba(234,179,8,0.2);  color:#fde68a; }
-.sev-Средняя    { background:rgba(249,115,22,0.2); color:#fdba74; }
-.sev-Крупная    { background:rgba(239,68,68,0.25); color:#fca5a5; }
-.sev-Критическая{ background:rgba(220,38,38,0.35); color:#ef4444; }
-.pothole-item {
-  display:flex; align-items:center; gap:10px; padding:8px 12px;
-  background:var(--surface2); border:1px solid var(--border);
-  border-radius:8px; font-size:11px;
-}
-.pothole-num {
-  width:22px; height:22px; border-radius:50%;
-  background:var(--danger); color:#fff;
-  display:flex; align-items:center; justify-content:center;
-  font-weight:700; font-size:11px; flex-shrink:0;
-}
-.pothole-info { flex:1; display:flex; flex-direction:column; gap:3px; }
-.pothole-conf { font-size:10px; color:var(--muted); }
-.pothole-area { font-size:10px; color:var(--muted); }
-</style>
+<!-- VIDEO TRASH -->
+<div class="modal-overlay" id="trashVideoOverlay">
+  <div class="video-modal-box">
+    <div class="vm-header">
+      <div><div class="vm-title">📹 Видеоанализ мусора</div><div class="vm-sub">YOLOv8-seg · покадровый стрим · хронология загрязнений</div></div>
+      <button class="vm-close-btn" id="trashVideoCloseBtn">✕</button>
+    </div>
+    <div class="inline-msg" id="trashVideoMsg"></div>
+    <div class="vm-settings">
+      <div class="vm-setting-row"><label class="vm-setting-label">Порог уверенности</label><input type="range" id="trashVideoConf" min="10" max="90" value="25" step="5" class="vm-slider"><span class="vm-slider-val" id="trashVideoConfLabel">25%</span></div>
+      <div class="vm-setting-row"><label class="vm-setting-label">Шаг кадра</label><input type="range" id="trashVideoStep" min="1" max="60" value="15" step="1" class="vm-slider"><span class="vm-slider-val" id="trashVideoStepLabel">15 кадр.</span></div>
+      <div class="vm-setting-hint">Шаг 15 при 30 fps ≈ анализ раз в 0.5 сек</div>
+    </div>
+    <div class="vm-actions">
+      <button class="fill-btn" id="trashVideoUploadBtn">📂 Выбрать видео</button>
+      <button class="send-btn" id="trashVideoAnalyzeBtn" disabled>▶ Анализировать</button>
+      <button class="action-btn" id="trashVideoCancelBtn" style="display:none;">⛔ Отмена</button>
+    </div>
+    <div class="vm-progress-wrap" id="trashVideoProgressWrap" style="display:none;"><div class="vm-progress-bar" id="trashVideoProgressBar" style="width:0%"></div><div class="vm-progress-label" id="trashVideoProgressLabel"></div></div>
+    <div class="vm-body">
+      <div class="vm-stream-col">
+        <div class="vm-col-title">Текущий кадр</div>
+        <div class="vm-stream-wrap" id="trashVideoStreamWrap" style="display:none;"><canvas id="trashVideoCanvas"></canvas><div class="vm-stream-ts" id="trashVideoStreamTs"></div></div>
+        <div class="vm-stream-ph">Здесь появятся кадры с обнаруженным мусором</div>
+      </div>
+      <div class="vm-timeline-col">
+        <div class="vm-col-title">Хронология загрязнений</div>
+        <div class="vm-timeline" id="trashVideoTimeline" style="display:none;"></div>
+        <div class="vm-timeline-ph">События появятся по мере обработки</div>
+      </div>
+    </div>
+    <div class="vm-summary" id="trashVideoSummary" style="display:none;">
+      <div class="vm-col-title">Итоговая сводка</div>
+      <textarea class="vm-summary-text" id="trashVideoSummaryText" readonly rows="9"></textarea>
+      <div class="vm-summary-actions">
+        <button class="fill-btn" id="trashVideoDownloadBtn">⬇ Скачать отчёт</button>
+        <button class="send-btn" id="trashVideoSendBtn" style="display:none;">💬 Отправить в чат</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script src="script.js"></script>
 </body>

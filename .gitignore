@@ -7,3 +7,16 @@ runs/
 pothole_dataset/
 yolo26n.pt
 yolov8n-seg.pt
+
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+*.gif
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+trash_dataset/
