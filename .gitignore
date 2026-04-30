@@ -18,5 +18,9 @@ yolov8n-seg.pt
 *.avi
 *.mov
 *.mkv
+*.txt
 
 trash_dataset/
+
+crack_dataset/
+pothole_dataset2/

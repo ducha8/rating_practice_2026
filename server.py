@@ -50,6 +50,15 @@ except Exception as _e:
     print("   Установите: pip install ultralytics opencv-python-headless")
     _trash_detector = None
 
+# ── Детектор трещин ────────────────────────────────────
+try:
+    from crack_detector import CrackDetector, register_crack_routes
+    _crack_detector = CrackDetector()
+    register_crack_routes(app, _crack_detector)
+    print("✅ Детектор трещин подключён.")
+except Exception as _e:
+    print(f"⚠️  Детектор трещин не загружен: {_e}")
+    _crack_detector = None
 # ── Ollama клиент ──────────────────────────────────────
 OLLAMA_MODEL        = os.environ.get("OLLAMA_MODEL",        "qwen3:4b")
 OLLAMA_VISION_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "gemma3:4b")
@@ -774,11 +783,13 @@ if __name__ == "__main__":
     gpu_name       = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "недоступна"
     pothole_status = _pothole_detector.status["message"] if _pothole_detector else "не загружен"
     trash_status   = _trash_detector.status["message"]   if _trash_detector   else "не загружен"
+    crack_status   = _crack_detector.status["message"]   if _crack_detector   else "не загружен"
     print(f"🚀 Сервер запущен.")
     print(f"🤖 Чат:          {OLLAMA_MODEL}")
     print(f"👁️  Зрение:      {OLLAMA_VISION_MODEL}")
     print(f"🕳️  Ямы:         {pothole_status}")
     print(f"🗑️  Мусор:       {trash_status}")
+    print(f"🔍 Трещины:      {crack_status}")
     print(f"🎙️  Whisper:     small (GPU по запросу)")
     print(f"💾 GPU:          {gpu_name}")
     print(f"⛔ Ctrl+C для остановки")

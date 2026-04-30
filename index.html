@@ -207,6 +207,7 @@
       <button class="nav-btn" id="imageRecognizeBtn"><span class="icon">🖼️</span> Распознать фото</button>
       <button class="nav-btn" id="potholeDetectBtn"><span class="icon">🕳️</span> Детекция ям</button>
       <button class="nav-btn" id="potholeVideoBtn"><span class="icon">🎥</span> Видеоанализ дорог</button>
+      <button class="nav-btn" id="crackDetectBtn"><span class="icon">🔍</span> Детекция трещин</button>
       <button class="nav-btn" id="trashDetectBtn"><span class="icon">🗑️</span> Детекция мусора</button>
       <button class="nav-btn" id="trashVideoBtn"><span class="icon">📹</span> Видео мусора</button>
       <button class="nav-btn" id="changePwBtn"><span class="icon">🔑</span> Сменить пароль</button>
@@ -465,6 +466,38 @@
         <button class="fill-btn" id="trashVideoDownloadBtn">⬇ Скачать отчёт</button>
         <button class="send-btn" id="trashVideoSendBtn" style="display:none;">💬 Отправить в чат</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- CRACK DETECTION -->
+<div class="modal-overlay" id="crackOverlay">
+  <div class="modal-box" style="max-width:680px;">
+    <div class="modal-title">🔍 Детекция трещин</div>
+    <div class="modal-sub" id="crackModelStatus">YOLOv8-seg · Загрузка статуса...</div>
+    <div id="crackMsg" class="inline-msg"></div>
+    <div id="crackPreviewWrap" style="display:none;">
+      <div style="display:flex;gap:10px;">
+        <div style="flex:1;"><div class="form-label" style="margin-bottom:5px;">Оригинал</div><div class="image-preview-box"><img id="crackOrigImg" src="" alt=""></div></div>
+        <div style="flex:1;"><div class="form-label" style="margin-bottom:5px;">Детекция</div>
+          <div class="image-preview-box"><img id="crackResultImg" src="" alt="" style="display:none;"></div>
+          <div id="crackResultPlaceholder" style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">Результат появится здесь</div>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Порог уверенности: <span id="crackConfLabel">25%</span></label>
+      <input type="range" id="crackConf" min="10" max="80" value="25" step="5" style="width:100%;accent-color:var(--accent);cursor:pointer;">
+    </div>
+    <div id="crackList" style="display:none;">
+      <div class="form-label" style="margin-bottom:6px;">Найденные трещины:</div>
+      <div id="crackListItems" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="crackCloseBtn">Закрыть</button>
+      <button class="btn-cancel" id="crackSendToChatBtn" style="display:none;color:var(--accent);border-color:var(--accent);">💬 В чат</button>
+      <button class="btn-primary" id="crackUploadBtn">📎 Выбрать фото</button>
+      <button class="btn-primary" id="crackAnalyzeBtn" disabled>🔍 Анализировать</button>
     </div>
   </div>
 </div>

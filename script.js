@@ -971,3 +971,135 @@ confirmOverlay.addEventListener('click', function(e){ if(e.target===confirmOverl
 document.getElementById('logoutBtn').addEventListener('click', function(){ localStorage.clear(); window.location.replace('login.html'); });
 
 loadChats();
+// ══════════════════════════════════════════════════════
+//  CRACK DETECTION (фото)
+// ══════════════════════════════════════════════════════
+var crackOverlay      = document.getElementById('crackOverlay');
+var crackMsg          = document.getElementById('crackMsg');
+var crackModelStatus  = document.getElementById('crackModelStatus');
+var crackPreviewWrap  = document.getElementById('crackPreviewWrap');
+var crackOrigImg      = document.getElementById('crackOrigImg');
+var crackResultImg    = document.getElementById('crackResultImg');
+var crackResultPH     = document.getElementById('crackResultPlaceholder');
+var crackList         = document.getElementById('crackList');
+var crackListItems    = document.getElementById('crackListItems');
+var crackConfSlider   = document.getElementById('crackConf');
+var crackConfLabel    = document.getElementById('crackConfLabel');
+var pendingCrackFile  = null;
+var lastCrackDetections = [];
+
+crackConfSlider.addEventListener('input', function(){ crackConfLabel.textContent = crackConfSlider.value+'%'; });
+
+async function fetchCrackModelStatus() {
+  try {
+    var res = await apiFetch('/api/crack-model-status');
+    var data = await res.json();
+    if (data.loaded) {
+      crackModelStatus.innerHTML = '<span style="color:var(--'+(data.is_custom?'success':'accent')+')">'
+        +(data.is_custom?'✅ Дообученная модель трещин':'⚠️ Базовая YOLOv8s-seg')+'</span> · '
+        +(data.device==='cpu'?'CPU':'GPU');
+    } else {
+      crackModelStatus.textContent = '❌ Модель не загружена';
+    }
+  } catch(e) { crackModelStatus.textContent = '⚠️ Нет связи с сервером'; }
+}
+
+function openCrackModal() {
+  crackMsg.className='inline-msg'; crackMsg.textContent='';
+  crackPreviewWrap.style.display='none'; crackOrigImg.src=''; crackResultImg.src='';
+  crackResultImg.style.display='none'; crackResultPH.style.display='flex';
+  crackList.style.display='none'; crackListItems.innerHTML='';
+  document.getElementById('crackAnalyzeBtn').disabled=true;
+  document.getElementById('crackSendToChatBtn').style.display='none';
+  pendingCrackFile=null; lastCrackDetections=[];
+  crackOverlay.classList.add('visible');
+  fetchCrackModelStatus();
+}
+function closeCrackModal() { crackOverlay.classList.remove('visible'); }
+
+document.getElementById('crackDetectBtn').addEventListener('click', openCrackModal);
+document.getElementById('crackCloseBtn').addEventListener('click', closeCrackModal);
+crackOverlay.addEventListener('click', function(e){ if(e.target===crackOverlay) closeCrackModal(); });
+
+document.getElementById('crackUploadBtn').addEventListener('click', function(){
+  var fi=document.createElement('input'); fi.type='file'; fi.accept='image/jpeg,image/png,image/webp,image/bmp'; fi.click();
+  fi.onchange=function(){
+    var file=fi.files[0]; if(!file) return;
+    pendingCrackFile=file;
+    var reader=new FileReader();
+    reader.onload=function(e){
+      crackOrigImg.src=e.target.result;
+      crackPreviewWrap.style.display='block';
+      crackResultImg.style.display='none';
+      crackResultPH.style.display='flex';
+      crackList.style.display='none';
+    };
+    reader.readAsDataURL(file);
+    crackMsg.className='inline-msg success'; crackMsg.textContent='✅ '+file.name;
+    document.getElementById('crackAnalyzeBtn').disabled=false;
+  };
+});
+
+document.getElementById('crackAnalyzeBtn').addEventListener('click', async function(){
+  if(!pendingCrackFile) return;
+  var conf=parseInt(crackConfSlider.value)/100;
+  crackMsg.className='inline-msg success'; crackMsg.textContent='🔍 Анализирую трещины...';
+  crackResultImg.style.display='none';
+  crackResultPH.style.display='flex'; crackResultPH.textContent='⏳ Обработка...';
+  crackList.style.display='none';
+  document.getElementById('crackAnalyzeBtn').disabled=true;
+  document.getElementById('crackUploadBtn').disabled=true;
+  try {
+    var fd=new FormData(); fd.append('file',pendingCrackFile); fd.append('conf',conf.toString());
+    var res=await fetch(API+'/api/detect-cracks',{method:'POST',headers:{'Authorization':'Bearer '+getToken()},body:fd});
+    var data=await res.json();
+    if(res.ok){
+      crackResultImg.src='data:image/jpeg;base64,'+data.annotated;
+      crackResultImg.style.display='block'; crackResultPH.style.display='none';
+      lastCrackDetections=data.detections||[];
+      if(data.count===0){
+        crackMsg.textContent='✅ Трещин не обнаружено!';
+      } else {
+        crackMsg.innerHTML='⚠️ Найдено: '+data.count+' · <span class="sev-badge sev-'+(data.damage_level||'Средняя')+'">'+(data.damage_level||'')+'</span>'
+          +(data.total_area_pct?' · '+data.total_area_pct+'% площади':'');
+        crackMsg.className='inline-msg success';
+        renderCrackList(data.detections);
+        crackList.style.display='block';
+        document.getElementById('crackSendToChatBtn').style.display='inline-block';
+      }
+    } else {
+      crackMsg.className='inline-msg error'; crackMsg.textContent='Ошибка: '+(data.error||'нет ответа');
+      crackResultPH.textContent='Ошибка';
+    }
+  } catch(e){
+    crackMsg.className='inline-msg error'; crackMsg.textContent='Ошибка: '+e.message;
+  } finally {
+    document.getElementById('crackAnalyzeBtn').disabled=false;
+    document.getElementById('crackUploadBtn').disabled=false;
+  }
+});
+
+function renderCrackList(detections) {
+  crackListItems.innerHTML='';
+  detections.forEach(function(d){
+    var item=document.createElement('div'); item.className='detect-item';
+    var num=document.createElement('div'); num.className='detect-num'; num.textContent=d.id;
+    var info=document.createElement('div'); info.className='detect-info';
+    var badge=document.createElement('span'); badge.className='sev-badge sev-'+(d.severity||'Средняя'); badge.textContent=(d.class_name||'трещина')+(d.severity?' · '+d.severity:'');
+    var conf=document.createElement('div'); conf.className='detect-conf'; conf.textContent='Уверенность: '+Math.round(d.confidence*100)+'%';
+    var area=document.createElement('div'); area.className='detect-area'; area.textContent='Площадь: '+d.area_pct+'% кадра · центр ('+d.center.x+', '+d.center.y+')';
+    info.appendChild(badge); info.appendChild(conf); info.appendChild(area);
+    item.appendChild(num); item.appendChild(info);
+    crackListItems.appendChild(item);
+  });
+}
+
+document.getElementById('crackSendToChatBtn').addEventListener('click', function(){
+  if(!lastCrackDetections.length) return;
+  var fn=pendingCrackFile?pendingCrackFile.name:'изображение';
+  var lines=['🔍 Анализ трещин «'+fn+'»:\nНайдено дефектов: '+lastCrackDetections.length+'\n'];
+  lastCrackDetections.forEach(function(d){
+    lines.push('#'+d.id+' '+d.class_name+' ('+d.severity+') | '+Math.round(d.confidence*100)+'% | '+d.area_pct+'% кадра');
+  });
+  closeCrackModal(); messageInputEl.value=lines.join('\n'); messageInputEl.focus();
+});
